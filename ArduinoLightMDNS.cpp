@@ -41,7 +41,7 @@
 #include <stdlib.h>
 #include <Udp.h>
 
-#include "ArduinoLightMDNS.h"
+#include "ArduinoLightMDNS.hpp"
 
 //#define MDNS_DEBUG
 #ifdef MDNS_DEBUG
