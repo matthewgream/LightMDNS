@@ -446,7 +446,7 @@ MDNS::Status MDNS::addServiceRecord(const ServiceProtocol proto, const uint16_t 
 #ifdef DEBUG_MDNS
     const auto __joinStrings = [](const std::vector<String>& strings) -> String {
         String joined;
-        for (const auto& string : strings) 
+        for (const auto& string : strings)
             joined += (joined.isEmpty() ? "" : ",") + string;
         return joined;
     };

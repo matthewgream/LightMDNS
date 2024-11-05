@@ -64,7 +64,7 @@ private:
 
     Status _messageSend(const uint16_t xid, const int type, const ServiceRecord* serviceRecord = nullptr);
     Status _messageRecv(void);
-    
+
     unsigned long _announceLast;
     Status _announce(void);
 
@@ -74,7 +74,6 @@ private:
     void _writeDNSName(uint8_t* buf, int bufSize, const char* name, const bool zeroTerminate) const;
     void _writeMyIPAnswerRecord(uint8_t* buf, const int bufSize) const;
     const char* _postfixForProtocol(const ServiceProtocol proto) const;
-
 
 public:
     explicit MDNS(UDP& udp);
