@@ -41,11 +41,28 @@ public:
         ServerError = -3,
         PacketBad = -4,
     } Status;
+    static String toString (const Status status) {
+        switch (status) {
+            case TryLater: return "TryLater";
+            case Success: return "Success";
+            case Failure: return "Failure";
+            case InvalidArgument: return "InvalidArgument";
+            case OutOfMemory: return "OutOfMemory";
+            case ServerError: return "ServerError";
+            case PacketBad: return "PacketBad";
+            default: return "Unknown";
+        }
+    }
 
     typedef enum {
         ServiceTCP,
         ServiceUDP
     } ServiceProtocol;
+    static String toString (const ServiceProtocol serviceProtocol) {
+        if (serviceProtocol == ServiceTCP) return "TCP";
+        else if (serviceProtocol == ServiceUDP) return "UDP";
+        else return "Unknown";
+    }
 
     using ServiceTextRecords = std::vector<String>;
     typedef struct {

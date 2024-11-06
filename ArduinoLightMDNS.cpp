@@ -73,6 +73,78 @@ typedef struct {
 
 //
 
+String parseDNSType(uint8_t typeByte1, uint8_t typeByte2) {
+    uint16_t type = (typeByte1 << 8) | typeByte2;
+    switch (type) {
+        case 0x0001: return "A";
+        case 0x0002: return "NS";
+        case 0x0005: return "CNAME";
+        case 0x0006: return "SOA";
+        case 0x000C: return "PTR";
+        case 0x000F: return "MX";
+        case 0x0010: return "TXT";
+        case 0x0021: return "SRV";
+        case 0x001C: return "AAAA";
+        case 0x00FB: return "DNSKEY";
+        case 0x00FC: return "RRSIG";
+        case 0x00FF: return "ANY";
+        default: return "Unknown(" + String(type, HEX) + ")";
+    }
+}
+String parseDNSFlags(uint8_t flagsByte) {
+    String result = "";
+    if (flagsByte & 0x80) result += "CACHE_FLUSH";
+    return result.length() ? result : "NONE";
+}
+String parseDNSClass(uint8_t classByte) {
+    switch (classByte & 0x7F) {    // Mask out cache flush bit
+        case 0x01: return "IN";
+        case 0x02: return "CS";
+        case 0x03: return "CH";
+        case 0x04: return "HS";
+        case 0xFF: return "ANY";
+        default: return "Unknown(" + String(classByte, HEX) + ")";
+    }
+}
+
+#include <numeric>
+
+String join (const std::vector<String>& elements, const String& delimiter) {
+    return std::accumulate(std::next(elements.begin()), elements.end(), elements[0], [&delimiter](const String& a, const String& b) { return a + delimiter + b; });
+}
+
+String parseHeader(const Header& h) {
+    static const char* opcodes[] = {
+        "QUERY", "IQUERY", "STATUS", "RESERVED", "NOTIFY",
+        "UPDATE", "UNK6", "UNK7", "UNK8", "UNK9",
+        "UNK10", "UNK11", "UNK12", "UNK13", "UNK14", "UNK15"
+    };
+    static const char* rcodes[] = {
+        "NOERROR", "FORMERR", "SERVFAIL", "NXDOMAIN",
+        "NOTIMP", "REFUSED", "YXDOMAIN", "YXRRSET",
+        "NXRRSET", "NOTAUTH", "NOTZONE", "UNK11",
+        "UNK12", "UNK13", "UNK14", "UNK15"
+    };
+    return join({ "ID=0x" + String(h.xid, HEX),
+                  "QR=" + String(h.queryResponse),
+                  "OPCODE=" + String(opcodes[h.opCode]),
+                  "AA=" + String(h.authoritiveAnswer),
+                  "TC=" + String(h.truncated),
+                  "RD=" + String(h.recursionDesired),
+                  "RA=" + String(h.recursionAvailable),
+                  "Z=" + String(h.zReserved),
+                  "AD=" + String(h.authenticatedData),
+                  "CD=" + String(h.checkingDisabled),
+                  "RCODE=" + String(rcodes[h.responseCode]),
+                  "QDCOUNT=" + String(h.queryCount),
+                  "ANCOUNT=" + String(h.answerCount),
+                  "NSCOUNT=" + String(h.authorityCount),
+                  "ARCOUNT=" + String(h.additionalCount) },
+                ",");
+}
+
+//
+
 MDNS::MDNS(UDP& udp)
     : _udp(&udp), _active(false), _announceLast(0) {
 }
@@ -98,7 +170,7 @@ MDNS::Status MDNS::start(const IPAddress& ip, const String& name) {
         else _active = true;
     }
     if (status != Success)
-        DEBUG_PRINTF("MDNS: start: failed _udp->beginMulticast error=%d, not active\n", status);
+        DEBUG_PRINTF("MDNS: start: failed _udp->beginMulticast error=%s, not active\n", toString(status).c_str());
     else
         DEBUG_PRINTF("MDNS: start: active ip=%s, name=%s\n", IPAddress(_ipAddress).toString().c_str(), _name.c_str());
     return status;
@@ -113,10 +185,10 @@ MDNS::Status MDNS::process(void) {
             DEBUG_PRINTF("MDNS: process [%d]\n", count++);
         } while ((status = _messageRecv()) == Success);
         if (status != Success && status != TryLater)
-            DEBUG_PRINTF("MDNS: process: failed _messageRecv error=%d\n", status);
+            DEBUG_PRINTF("MDNS: process: failed _messageRecv error=%s\n", toString(status).c_str());
         else if (status == Success || status == TryLater)
             if ((status = _announce()) != Success)
-                DEBUG_PRINTF("MDNS: process: failed _announce error=%d\n", status);
+                DEBUG_PRINTF("MDNS: process: failed _announce error=%s\n", toString(status).c_str());
     }
     return status;
 }
@@ -163,13 +235,13 @@ MDNS::Status MDNS::_messageSend(uint16_t xid, int type, const ServiceRecord* ser
     // construct the answer section
     switch (type) {
         case PacketTypeMyIPAnswer:
-            DEBUG_PRINTF("MDNS: packet: sending IP, ip=%s, name=%s\n", IPAddress(_ipAddress).toString().c_str(), _name.c_str());
+            DEBUG_PRINTF("MDNS: packet: sending IP answer, ip=%s, name=%s\n", IPAddress(_ipAddress).toString().c_str(), _name.c_str());
             _writeMyIPAnswerRecord(buf, bufSize);
             break;
 
         case PacketTypeServiceRecord:
             assert(serviceRecord != nullptr);
-            DEBUG_PRINTF("MDNS: packet: sending SRV announce %d/%u/%s/%s/[%d]\n", serviceRecord->proto, serviceRecord->port, serviceRecord->name.c_str(), serviceRecord->servName.c_str(), serviceRecord->textRecords.size());
+            DEBUG_PRINTF("MDNS: packet: sending SRV record %s/%u/%s/%s/[%d]\n", toString(serviceRecord->proto).c_str(), serviceRecord->port, serviceRecord->name.c_str(), serviceRecord->servName.c_str(), serviceRecord->textRecords.size());
 
             // (1) SRV record
             _writeServiceRecordName(buf, bufSize, serviceRecord, false);
@@ -242,7 +314,7 @@ MDNS::Status MDNS::_messageSend(uint16_t xid, int type, const ServiceRecord* ser
 
         case PacketTypeServiceRecordRelease:
             assert(serviceRecord != nullptr);
-            DEBUG_PRINTF("MDNS: packet: sending SRV release %d/%u/%s/%s/[%d]\n", serviceRecord->proto, serviceRecord->port, serviceRecord->name.c_str(), serviceRecord->servName.c_str(), serviceRecord->textRecords.size());
+            DEBUG_PRINTF("MDNS: packet: sending SRV release %s/%u/%s/%s/[%d]\n", toString(serviceRecord->proto).c_str(), serviceRecord->port, serviceRecord->name.c_str(), serviceRecord->servName.c_str(), serviceRecord->textRecords.size());
 
             // just send our service PTR with a TTL of zero
             _writeServiceRecordPTR(buf, bufSize, serviceRecord, 0);
@@ -281,10 +353,11 @@ MDNS::MDNS::Status MDNS::_messageRecv() {
     auto offset = 0;
 
     for (auto z = 0; z < sizeof(Header); z++) {
-        if (offset >= udp_len) goto bad_packet;
-        auto r = _udp->read();
-        if (r < 0) goto bad_packet;
-        offset++;
+        if (offset >= udp_len) goto bad_packet;    // READ
+        int r = _udp->read();                      // READ
+        if (r < 0) goto bad_packet;                // READ
+        offset++;                                  // READ
+        //
         buf[z] = (uint8_t)r;
     }
 
@@ -310,7 +383,7 @@ MDNS::MDNS::Status MDNS::_messageRecv() {
         }
         auto ipv6AddrAskedFor = false;
 
-        DEBUG_PRINTF("MDNS: packet: processing, xid=%u, queries=%u\n", xid, q);
+        DEBUG_PRINTF("MDNS: packet: processing, %s / %s:%u\n", parseHeader(dnsHeader).c_str(), _udp->remoteIP().toString().c_str(), _udp->remotePort());
 
         const auto __matchStringPart = [](const char** pCmpStr, int* pCmpLen, const uint8_t* buf, const int dataLen) -> int {
             const auto _memcmp_caseinsensitive = [](const char* a, const unsigned char* b, const int l) -> int {
@@ -337,42 +410,47 @@ MDNS::MDNS::Status MDNS::_messageRecv() {
 
             auto tLen = 0, rLen = 0;
             do {
-                if (offset >= udp_len) break;
-                rLen = _udp->read();
-                if (rLen < 0) break;
-                offset++;
-
+                if (offset >= udp_len) break;    // READ
+                rLen = _udp->read();             // READ
+                if (rLen < 0) break;             // READ
+                offset++;                        // READ
+                //
                 tLen += 1;
-                if (rLen > 128) {    // handle DNS name compression, kinda, sorta
+                // https://www.ietf.org/rfc/rfc1035.txt
+                if ((rLen & 0xC0) == 0xC0) {
 
-                    if (offset >= udp_len) goto bad_packet;
-                    auto xLen = _udp->read();
-                    if (xLen < 0) goto bad_packet;
-                    offset++;
-                    DEBUG_PRINTF("(%d)", xLen);
-
+                    if (offset >= udp_len) goto bad_packet;    // READ
+                    int xLen = _udp->read();                   // READ
+                    if (xLen < 0) goto bad_packet;             // READ
+                    offset++;                                  // READ
+                    //
+                    const int offs = (static_cast<uint16_t>(rLen) & ~0xC000 << 8) | static_cast<uint16_t>(xLen);    // in practice, same as xLen
+                    DEBUG_PRINTF("(%02X/%02X = %04X)", rLen, xLen, offs);
                     for (auto j = 0; j < recordsLength; j++)
-                        if (recordsMatcher[j].position && recordsMatcher[j].position != xLen)
+                        if (recordsMatcher[j].position && recordsMatcher[j].position != offs)
                             recordsMatcher[j].match = 0;
                     tLen += 1;
                 } else if (rLen > 0) {
+                    DEBUG_PRINTF("[");
                     auto tr = rLen;
                     while (tr > 0) {
                         auto ir = (tr > (int)sizeof(Header)) ? sizeof(Header) : tr;
 
                         for (auto z = 0; z < ir; z++) {
-                            if (offset >= udp_len) goto bad_packet;
-                            auto r = _udp->read();
-                            if (r < 0) goto bad_packet;
-                            offset++;
+                            if (offset >= udp_len) goto bad_packet;    // READ
+                            int r = _udp->read();                      // READ
+                            if (r < 0) goto bad_packet;                // READ
+                            offset++;                                  // READ
+                            //
                             buf[z] = (uint8_t)r;
                         }
-                        DEBUG_PRINTF("[%.*s]", ir, buf);
+                        DEBUG_PRINTF("%.*s", ir, buf);
                         tr -= ir;
                         for (auto j = 0; j < recordsLength; j++)
                             if (!recordsAskedFor[j] && recordsMatcher[j].match)
                                 recordsMatcher[j].match &= __matchStringPart(&recordsMatcher[j].name, &recordsMatcher[j].length, buf, ir);
                     }
+                    DEBUG_PRINTF("]");
                     tLen += rLen;
                 }
             } while (rLen > 0 && rLen <= 128);
@@ -383,10 +461,11 @@ MDNS::MDNS::Status MDNS::_messageRecv() {
             // if so, we'll note to send a record
             auto next_bytes = 0;
             for (auto z = 0; z < 4; z++) {
-                if (offset >= udp_len) break;
-                auto r = _udp->read();
-                if (r < 0) break;
-                offset++;
+                if (offset >= udp_len) break;    // READ
+                int r = _udp->read();            // READ
+                if (r < 0) break;                // READ
+                offset++;                        // READ
+                //
                 buf[z] = (uint8_t)r;
                 next_bytes++;
             }
@@ -404,7 +483,8 @@ MDNS::MDNS::Status MDNS::_messageRecv() {
                     }
                 }
             }
-            DEBUG_PRINTF("\n");
+            if (next_bytes == 4)
+                DEBUG_PRINTF(" <%s/%s/%s>\n", parseDNSType(buf[0], buf[1]).c_str(), parseDNSFlags(buf[2]).c_str(), parseDNSClass(buf[3]).c_str());
         }
 
         // now, handle the requests
@@ -418,6 +498,80 @@ MDNS::MDNS::Status MDNS::_messageRecv() {
         // if we were asked for our IPv6 address, say that we don't have any
         if (ipv6AddrAskedFor)
             _messageSend(xid, PacketTypeNoIPv6AddrAvailable);
+#ifdef DEBUG_MDNS            
+    } else {
+       
+        struct Group {
+            int offset;
+            std::vector<String> names;
+        };
+        std::vector<Group> groups;
+        auto uncompressAtOffset = [&](int offs) -> String { // not sure this is correct if > first group
+            int cnts = 0;
+            for (int i = 0; i < groups.size(); i++) {
+                cnts += groups[i].offset;
+                for (int j = 0; j < groups[i].names.size(); j++) {
+                    if (offs < (cnts + groups[i].names[j].length()))
+                        return (offs == cnts) ? groups[i].names[j] : String(groups[i].names[j].c_str()[offs - cnts]);
+                    cnts += groups[i].names[j].length();
+                }
+            }
+            return String();
+        };
+
+        int goffset = 0;
+        DEBUG_PRINTF("MDNS: packet: debugging, %s / %s:%u\n", parseHeader(dnsHeader).c_str(), _udp->remoteIP().toString().c_str(), _udp->remotePort());
+        for (int i = 0, q = static_cast<int>(ntohs(dnsHeader.queryCount)); i < q; i++) {
+            std::vector<String> names;
+
+            DEBUG_PRINTF("MDNS: packet: debugging (not for us), query[%d/%u]: ", i, q);
+            int pCnt = 0, rLen = 0;
+            do {
+                if (offset >= udp_len) break;    // READ
+                rLen = _udp->read();             // READ
+                if (rLen < 0) break;             // READ
+                offset++;                        // READ
+                pCnt++;
+                //
+                // https://www.ietf.org/rfc/rfc1035.txt
+                if ((rLen & 0xC0) == 0xC0) {
+                    if (offset >= udp_len) goto bad_packet;    // READ
+                    int xLen = _udp->read();                   // READ
+                    if (xLen < 0) goto bad_packet;             // READ
+                    offset++;                                  // READ
+                    pCnt++;
+                    //
+                    const int offs = (static_cast<uint16_t>(rLen) & ~0xC000 << 8) | static_cast<uint16_t>(xLen);    // in practice, same as xLen
+                    names.push_back("(" + uncompressAtOffset(offs) + ")");
+                } else if (rLen > 0) {
+                    String name;
+                    for (auto z = 0; z < rLen; z++) {
+                        if (offset >= udp_len) goto bad_packet;    // READ
+                        int r = _udp->read();                      // READ
+                        if (r < 0) goto bad_packet;                // READ
+                        offset++;                                  // READ
+                        pCnt++;
+                        //
+                        name += (char)r;
+                    }
+                    names.push_back("[" + name + "]");
+                }
+            } while (rLen > 0 && rLen <= 128);
+
+            uint8_t buf[4];
+            for (auto z = 0; z < 4; z++) {
+                if (offset >= udp_len) break;    // READ
+                int r = _udp->read();            // READ
+                if (r < 0) break;                // READ
+                offset++;                        // READ
+                pCnt++;
+                //
+                buf[z] = static_cast<uint8_t>(r);
+            }
+            groups.push_back({ .offset = goffset, .names = names }); goffset += pCnt;
+            DEBUG_PRINTF(" %s <%s/%s/%s>\n", join (names, "").c_str (), parseDNSType(buf[0], buf[1]).c_str(), parseDNSFlags(buf[2]).c_str(), parseDNSClass(buf[3]).c_str());
+        }
+#endif // DEBUG_MDNS        
     }
 
     _udp->flush();
@@ -457,7 +611,7 @@ MDNS::Status MDNS::addServiceRecord(const ServiceProtocol proto, const uint16_t 
             ;
         return &p[2];
     };
-    DEBUG_PRINTF("MDNS: addServiceRecord: proto=%d, port=%u, name=%s, textRecords.size=%d,text=[%s]\n", proto, port, name.c_str(), textRecords.size(), __joinStrings(textRecords).c_str());
+    DEBUG_PRINTF("MDNS: addServiceRecord: proto=%s, port=%u, name=%s, textRecords.size=%d,text=[%s]\n", toString(proto).c_str(), port, name.c_str(), textRecords.size(), __joinStrings(textRecords).c_str());
     if (name.isEmpty() || port == 0 || (proto != ServiceTCP && proto != ServiceUDP))
         return InvalidArgument;
     try {
@@ -475,7 +629,7 @@ MDNS::Status MDNS::addServiceRecord(const ServiceProtocol proto, const uint16_t 
     }
 }
 MDNS::Status MDNS::removeServiceRecord(const ServiceProtocol proto, const uint16_t port, const String& name) {
-    DEBUG_PRINTF("MDNS: removeServiceRecord: proto=%d, port=%u, name=%s\n", proto, port, name.c_str());
+    DEBUG_PRINTF("MDNS: removeServiceRecord: proto=%s, port=%u, name=%s\n", toString(proto).c_str(), port, name.c_str());
     std::erase_if(_serviceRecords, [&](const ServiceRecord& record) {
         if (!(record.port == port && record.proto == proto && (name.isEmpty() || record.name == name)))
             return false;

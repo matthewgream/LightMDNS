@@ -144,14 +144,13 @@ void wiFiWaitfor(const char *name, volatile bool &flag) {
 }
 
 void wiFiConnect() {
-
     WiFi.persistent(false);
     WiFi.onEvent(wiFiEvents);
     WiFi.setHostname(WIFI_HOST);
     WiFi.setAutoReconnect(true);
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);    // XXX ?!? for AUTH_EXPIRE ... flash access problem ...  https://github.com/espressif/arduino-esp32/issues/2144
     wiFiWaitfor("connect", wiFiConnected);
     wiFiWaitfor("allocation", wiFiAllocated);
 }
