@@ -18,7 +18,7 @@ String BytesToHexString(const uint8_t bytes[], const char *separator = ":") {
     char buffer[(N * 2) + ((N - 1) * separator_max) + 1] = { '\0' }, *buffer_ptr = buffer;
     for (auto i = 0; i < N; i++) {
         if (i > 0 && separator[0] != '\0')
-            for(auto separator_ptr = separator; *separator_ptr != '\0';)
+            for (auto separator_ptr = separator; *separator_ptr != '\0';)
                 *buffer_ptr++ = *separator_ptr++;
         static const char hex_chars[] = "0123456789abcdef";
         *buffer_ptr++ = hex_chars[(bytes[i] >> 4) & 0x0F];
@@ -44,7 +44,8 @@ String ArithmeticToString(const T &n, const int x = -1, const bool t = false) {
             }
             e--;
             if (d)
-                while (e > d + 1 && *e == '0') *e-- = '\0';
+                while (e > d + 1 && *e == '0')
+                    *e-- = '\0';
             else
                 *e++ = '.', *e++ = '0', *e = '\0';
         }
@@ -111,16 +112,16 @@ static String _error_to_string(const wifi_err_reason_t reason) {
 static volatile bool wiFiConnected = false, wiFiAllocated = false;
 static void wiFiEvents(WiFiEvent_t event, WiFiEventInfo_t info) {
     if (event == WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_CONNECTED) {
-        Serial.printf("WiFiEvent: ARDUINO_EVENT_WIFI_STA_CONNECTED, ssid=%s, bssid=%s, channel=%d, authmode=%s, rssi=%d\n",
+        Serial.printf("WiFiEvent: ARDUINO_EVENT_WIFI_STA_CONNECTED (ssid=%s, bssid=%s, channel=%d, authmode=%s, rssi=%d)\n",
                       _ssid_to_string(info.wifi_sta_connected.ssid, info.wifi_sta_connected.ssid_len).c_str(),
                       _bssid_to_string(info.wifi_sta_connected.bssid).c_str(), (int)info.wifi_sta_connected.channel,
                       _authmode_to_string(info.wifi_sta_connected.authmode).c_str(), WiFi.RSSI());
         wiFiConnected = true;
     } else if (event == WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP) {
-        Serial.printf("WiFiEvent: ARDUINO_EVENT_WIFI_STA_GOT_IP, address=%s\n", IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str());
+        Serial.printf("WiFiEvent: ARDUINO_EVENT_WIFI_STA_GOT_IP (address=%s)\n", IPAddress(info.got_ip.ip_info.ip.addr).toString().c_str());
         wiFiAllocated = true;
     } else if (event == WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
-        Serial.printf("WiFiEvent: ARDUINO_EVENT_WIFI_STA_DISCONNECTED, ssid=%s, bssid=%s, reason=%s\n",
+        Serial.printf("WiFiEvent: ARDUINO_EVENT_WIFI_STA_DISCONNECTED (ssid=%s, bssid=%s, reason=%s)\n",
                       _ssid_to_string(info.wifi_sta_disconnected.ssid, info.wifi_sta_disconnected.ssid_len).c_str(),
                       _bssid_to_string(info.wifi_sta_disconnected.bssid).c_str(), _error_to_string((wifi_err_reason_t)info.wifi_sta_disconnected.reason).c_str());
         wiFiConnected = false;
@@ -131,9 +132,9 @@ static void wiFiEvents(WiFiEvent_t event, WiFiEventInfo_t info) {
 #include "Secrets.hpp"
 //#define WIFI_SSID "ssid"    // Secrets.hpp
 //#define WIFI_PASS "pass"    // Secrest.hpp
-#define WIFI_HOST "mdnstester"
+#define WIFI_HOST "arduinoLightMDNS"
 
-void wiFiWaitfor(const char* name, volatile bool& flag) {
+void wiFiWaitfor(const char *name, volatile bool &flag) {
     Serial.printf("WiFi waiting for %s ", name);
     while (!flag) {
         delay(500);
@@ -151,8 +152,8 @@ void wiFiConnect() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-    wiFiWaitfor ("connect", wiFiConnected);
-    wiFiWaitfor ("allocation", wiFiAllocated);
+    wiFiWaitfor("connect", wiFiConnected);
+    wiFiWaitfor("allocation", wiFiAllocated);
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -182,11 +183,11 @@ void setup() {
 }
 
 void loop() {
-    Serial.printf ("loop\n");
+    Serial.printf("loop\n");
     auto status = mdns->process();
     if (status != MDNS::Success)
         Serial.printf("MDNS process: error=%d\n", status);
-    delay (500);
+    delay(500);
 }
 
 // -----------------------------------------------------------------------------------------------
