@@ -135,7 +135,7 @@ static void wiFiEvents(WiFiEvent_t event, WiFiEventInfo_t info) {
 #define WIFI_HOST "arduinoLightMDNS"
 
 void wiFiWaitfor(const char *name, volatile bool &flag) {
-    Serial.printf("WiFi waiting for %s ", name);
+    Serial.printf("WiFi waiting for state=%s ", name);
     while (!flag) {
         delay(500);
         Serial.print(".");
@@ -151,8 +151,8 @@ void wiFiConnect() {
     WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     WiFi.setTxPower(WIFI_POWER_8_5dBm);    // XXX ?!? for AUTH_EXPIRE ... flash access problem ...  https://github.com/espressif/arduino-esp32/issues/2144
-    wiFiWaitfor("connect", wiFiConnected);
-    wiFiWaitfor("allocation", wiFiAllocated);
+    wiFiWaitfor("connected", wiFiConnected);
+    wiFiWaitfor("allocated", wiFiAllocated);
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -182,7 +182,6 @@ void setup() {
 }
 
 void loop() {
-    Serial.printf("loop\n");
     auto status = mdns->process();
     if (status != MDNS::Success)
         Serial.printf("MDNS process: error=%d\n", status);

@@ -40,8 +40,9 @@ public:
         OutOfMemory = -2,
         ServerError = -3,
         PacketBad = -4,
+        NameConflict = -5,
     } Status;
-    static String toString (const Status status) {
+    static String toString(const Status status) {
         switch (status) {
             case TryLater: return "TryLater";
             case Success: return "Success";
@@ -50,6 +51,7 @@ public:
             case OutOfMemory: return "OutOfMemory";
             case ServerError: return "ServerError";
             case PacketBad: return "PacketBad";
+            case NameConflict: return "NameConflict";
             default: return "Unknown";
         }
     }
@@ -58,7 +60,7 @@ public:
         ServiceTCP,
         ServiceUDP
     } ServiceProtocol;
-    static String toString (const ServiceProtocol serviceProtocol) {
+    static String toString(const ServiceProtocol serviceProtocol) {
         if (serviceProtocol == ServiceTCP) return "TCP";
         else if (serviceProtocol == ServiceUDP) return "UDP";
         else return "Unknown";
@@ -85,11 +87,13 @@ private:
     unsigned long _announceLast;
     Status _announce(void);
 
+    void _conflicted(void);
+
     std::vector<ServiceRecord> _serviceRecords;
-    void _writeServiceRecordName(uint8_t* buf, const int bufSize, const ServiceRecord* serviceRecord, const bool tld) const;
-    void _writeServiceRecordPTR(uint8_t* buf, const int bufSize, const ServiceRecord* serviceRecord, const uint32_t ttl) const;
-    void _writeDNSName(uint8_t* buf, int bufSize, const char* name, const bool zeroTerminate) const;
-    void _writeMyIPAnswerRecord(uint8_t* buf, const int bufSize) const;
+    void _writeAddressRecord(uint8_t* buf, const int bufSize, const uint32_t ttl) const;
+    void _writeServiceRecord(uint8_t* buf, const int bufSize, const ServiceRecord* serviceRecord, const uint32_t ttl) const;
+    void _writeSRVName(uint8_t* buf, const int bufSize, const ServiceRecord* serviceRecord, const bool tld) const;
+    void _writeDNSName(uint8_t* buf, const int bufSize, const char* name, const bool zeroTerminate) const;
     const char* _postfixForProtocol(const ServiceProtocol proto) const;
 
 public:
@@ -97,7 +101,7 @@ public:
     virtual ~MDNS();
 
     Status begin(void);
-    Status start(const IPAddress& ip, const String& name);
+    Status start(const IPAddress& ip, const String& name, bool checkForConflicts = false);
     Status process(void);
     Status stop(void);
 
