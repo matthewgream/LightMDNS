@@ -71,49 +71,60 @@ public:
         uint16_t port;
         ServiceProtocol proto;
         String name;
-        String servName;
+        String fqsn;
         ServiceTextRecords textRecords;
     } ServiceRecord;
 
 private:
     UDP* _udp;
     IPAddress _ipAddress;
-    String _name;
+    String _name, _fqhn, _arpa;
     bool _active;
 
     Status _messageSend(const uint16_t xid, const int type, const ServiceRecord* serviceRecord = nullptr);
     Status _messageRecv(void);
+    bool _isAddressValid(const IPAddress& addr) const;
 
     unsigned long _announceLast;
     Status _announce(void);
+    Status _conflicted(void);
 
-    void _conflicted(void);
-
+    struct Buffer {
+        uint8_t* data;
+        const size_t size;
+    };
     std::vector<ServiceRecord> _serviceRecords;
-    void _writeAddressRecord(uint8_t* buf, const int bufSize, const uint32_t ttl) const;
-    void _writeServiceRecord(uint8_t* buf, const int bufSize, const ServiceRecord* serviceRecord, const uint32_t ttl) const;
-    void _writeSRVName(uint8_t* buf, const int bufSize, const ServiceRecord* serviceRecord, const bool tld) const;
-    void _writeDNSName(uint8_t* buf, const int bufSize, const char* name, const bool zeroTerminate) const;
-    const char* _postfixForProtocol(const ServiceProtocol proto) const;
+    void _writeNSECRecord(Buffer* buffer, const ServiceRecord* serviceRecord, const uint32_t ttl, const bool cacheFlush) const;
+    void _writeCompleteRecord(Buffer* buffer, const uint32_t ttl, const bool cacheFlush = true, const bool anyType = false) const;
+    void _writeReverseRecord(Buffer* buffer, const uint32_t ttl) const;
+    void _writeAddressRecord(Buffer* buffer, const uint32_t ttl, const bool cacheFlush = true, const bool anyTime = false) const;
+    void _writeServiceRecord(Buffer* buffer, const ServiceRecord* serviceRecord, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional = false) const;
+    size_t _sizeofServiceRecord(const ServiceRecord* record, const bool includeAdditional = false) const;
+    void _writeDNSName(Buffer* buffer, const String& name) const;
+    size_t _sizeofDNSName(const String& name) const;
+    void _writeBits(Buffer* buffer, const uint8_t byte1, const uint8_t byte2, const uint8_t byte3, const uint8_t byte4, const uint32_t ttl) const;
+    void _writeLength(Buffer* buffer, const uint16_t length) const;
+    void _writeNameLengthAndContent(Buffer* buffer, const String& name) const;
+    void _writeAddressLengthAndContent(Buffer* buffer, const IPAddress& address) const;
 
 public:
     explicit MDNS(UDP& udp);
     virtual ~MDNS();
 
     Status begin(void);
-    Status start(const IPAddress& ip, const String& name, bool checkForConflicts = false);
+    Status start(const IPAddress& ip, const String& name = String(), const bool checkForConflicts = false);
     Status process(void);
     Status stop(void);
 
-    inline Status addServiceRecord(const ServiceRecord& record) {
-        return addServiceRecord(record.proto, record.port, record.name, record.textRecords);
+    inline Status serviceRecordInsert(const ServiceRecord& record) {
+        return serviceRecordInsert(record.proto, record.port, record.name, record.textRecords);
     }
-    inline Status removeServiceRecord(const ServiceRecord& record) {
-        return removeServiceRecord(record.proto, record.port, record.name);
+    inline Status serviceRecordRemove(const ServiceRecord& record) {
+        return serviceRecordRemove(record.proto, record.port, record.name);
     }
-    Status addServiceRecord(const ServiceProtocol proto, const uint16_t port, const String& name, const ServiceTextRecords& textRecords = ServiceTextRecords());
-    Status removeServiceRecord(const ServiceProtocol proto, const uint16_t port, const String& name);
-    Status removeAllServiceRecords(void);
+    Status serviceRecordInsert(const ServiceProtocol proto, const uint16_t port, const String& name, const ServiceTextRecords& textRecords = ServiceTextRecords());
+    Status serviceRecordRemove(const ServiceProtocol proto, const uint16_t port, const String& name);
+    Status serviceRecordClear(void);
 };
 
 #endif    // __MDNS_H__

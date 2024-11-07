@@ -177,8 +177,9 @@ void setup() {
     auto status = mdns->begin();
     if (status != MDNS::Success)
         Serial.printf("MDNS begin: error=%d\n", status);
+    mdns->serviceRecordInsert(MDNS::ServiceTCP, 80, "webserver._http", { "type=example", "not_really=true" });
+    mdns->serviceRecordInsert(MDNS::ServiceUDP, 1234, "proprietary._udp", { "name=whatever", "something=false" });
     mdns->start(WiFi.localIP(), WIFI_HOST);
-    mdns->addServiceRecord(MDNS::ServiceTCP, 80, "webserver._http", { "type=example", "not_really=true" });
 }
 
 void loop() {
