@@ -1368,18 +1368,18 @@ MDNS::MDNS::Status MDNS::_messageRecv() {
 
             //
 
-            size_t j = 0;
+            size_t r = 0;
             for (auto& m : recordsMatcher) {
                 if (!m.requested && m.match && !m.length) {
                     if (!m.position)
                         m.position = UDP_READ_OFF() - 4 - tLen;
                     if ((next_bytes == 4) && buf[0] == DNS_RECORD_HI && (buf[2] == DNS_CACHE_NO_FLUSH || buf[2] == DNS_CACHE_FLUSH) && buf[3] == DNS_CLASS_IN) {
-                        if (j == 0) {    // Query for our hostname
+                        if (r == 0) {    // Query for our hostname
                             if (buf[1] == DNS_RECORD_A)
                                 m.requested = true;
                             else
                                 m.unsupported = true;
-                        } else if (j == 1) {    // Query for our address
+                        } else if (r == 1) {    // Query for our address
                             if (buf[1] == DNS_RECORD_PTR)
                                 m.requested = true;
                             else
@@ -1392,9 +1392,9 @@ MDNS::MDNS::Status MDNS::_messageRecv() {
                         }
                     }
                 }
-                recordsMatcherTop[j].requested = m.requested;
-                recordsMatcherTop[j].unsupported = m.unsupported;
-                j++;
+                recordsMatcherTop[r].requested = m.requested;
+                recordsMatcherTop[r].unsupported = m.unsupported;
+                r++;
             }
 
             //
@@ -1421,18 +1421,18 @@ MDNS::MDNS::Status MDNS::_messageRecv() {
             DEBUG_PRINTF("MDNS: packet: processing, matched[DISC]: %s\n", recordsMatcherTop[2].name);
             _messageSend(xid, PacketTypeCompleteRecord);
         } else {
-            int j = 0;
+            int mi = 0;
             for (const auto& r : _serviceRecords) {
-                const auto& m = recordsMatcherTop[j + recordsLengthStatic];
+                const auto& m = recordsMatcherTop[mi + recordsLengthStatic];
                 if (m.requested) {
-                    DEBUG_PRINTF("MDNS: packet: processing, matched[SERV:%d]: %s\n", j, m.name);
+                    DEBUG_PRINTF("MDNS: packet: processing, matched[SERV:%d]: %s\n", mi, m.name);
                     _messageSend(xid, PacketTypeServiceRecord, &r);
                 }
                 if (m.unsupported) {
-                    DEBUG_PRINTF("MDNS: packet: processing, negated[SERV:%d]: %s\n", j, m.name);
+                    DEBUG_PRINTF("MDNS: packet: processing, negated[SERV:%d]: %s\n", mi, m.name);
                     _messageSend(xid, PacketTypeNSEC, &r);
                 }
-                j++;
+                mi++;
             }
         }
 
@@ -1494,15 +1494,15 @@ MDNS::MDNS::Status MDNS::_messageRecv() {
                 }
             } while (rLen > 0 && rLen <= DNS_LABEL_LENGTH_MAX);
 
-            uint8_t buf[4];
+            uint8_t ctrl[4];
             for (auto z = 0; z < 4; z++) {
-                UDP_READ_ONE(uint8_t, buf[z], break);
+                UDP_READ_ONE(uint8_t, ctrl[z], break);
                 pCnt++;
             }
             groups.push_back({ .offset = goffset, .names = names });
             goffset += pCnt;
 
-            DEBUG_PRINTF("%s <%s/%s/%s>\n", join(names, ".").c_str(), parseDNSType(buf[0], buf[1]).c_str(), parseDNSFlags(buf[2]).c_str(), parseDNSClass(buf[3]).c_str());
+            DEBUG_PRINTF("%s <%s/%s/%s>\n", join(names, ".").c_str(), parseDNSType(ctrl[0], ctrl[1]).c_str(), parseDNSFlags(ctrl[2]).c_str(), parseDNSClass(ctrl[3]).c_str());
         }
 #endif    // DEBUG_MDNS
     }
@@ -1769,8 +1769,8 @@ size_t MDNS::_sizeofDNSName(const String& name) const {
     size_t length = 1;    // null terminator
     auto p = name.c_str();
     while (*p) {
-        const auto next = strchr(p, '.');
-        size_t labelLen = next ? (next - p) : strlen(p);
+        auto next = strchr(p, '.');
+        const size_t labelLen = next ? (next - p) : strlen(p);
         length += 1 + labelLen;    // 1 for length byte
         p += labelLen;
         if (next) p++;    // skip the dot
