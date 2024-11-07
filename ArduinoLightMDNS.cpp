@@ -1691,10 +1691,10 @@ void MDNS::_writeServiceRecord(Buffer* buffer, const ServiceRecord* serviceRecor
         _writeLength(buffer, length);
         //
         for (const auto& txt : serviceRecord->textRecords) {
-            const auto size = std::min(txt.length(), (size_t)DNS_TXT_LENGTH_MAX);
-            buffer->data[0] = (uint8_t)size;
+            const auto size = std::min(txt.length(), static_cast<size_t>(DNS_TXT_LENGTH_MAX));
+            buffer->data[0] = static_cast<uint8_t>(size);
             _udp->write(buffer->data, 1);
-            _udp->write((uint8_t*)txt.c_str(), size);
+            _udp->write(reinterpret_cast<const uint8_t*>(txt.c_str()), size);
         }
     }
 
@@ -1746,7 +1746,7 @@ void MDNS::_writeDNSName(Buffer* buffer, const String& name) const {
             c++;
         };
         uint8_t* p3 = buffer->data;
-        size_t i = c, l = buffer->size - 1;
+        int i = c, l = buffer->size - 1;
         *p3++ = (uint8_t)--i;
         while (i-- > 0) {
             *p3++ = *p1++;
