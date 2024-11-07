@@ -1736,7 +1736,7 @@ size_t MDNS::_sizeofServiceRecord(const ServiceRecord* record, const bool includ
 // -----------------------------------------------------------------------------------------------
 
 void MDNS::_writeDNSName(Buffer* buffer, const String& name) const {
-    const uint8_t* p1 = reinterpret_cast<const uint8_t*> (name.c_str());
+    const uint8_t* p1 = reinterpret_cast<const uint8_t*>(name.c_str());
     while (*p1) {
         size_t c = 1;
         const uint8_t* p2 = p1;

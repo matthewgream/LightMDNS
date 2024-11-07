@@ -133,6 +133,7 @@ static void wiFiEvents(WiFiEvent_t event, WiFiEventInfo_t info) {
 //#define WIFI_SSID "ssid"    // Secrets.hpp
 //#define WIFI_PASS "pass"    // Secrest.hpp
 #define WIFI_HOST "arduinoLightMDNS"
+#define WIFI_ADDR WiFi.localIP()
 
 void wiFiWaitfor(const char *name, volatile bool &flag) {
     Serial.printf("WiFi waiting for state=%s ", name);
@@ -163,6 +164,15 @@ void wiFiConnect() {
 WiFiUDP *udp;
 MDNS *mdns;
 
+#define HALT_ON_MDNS_ERROR(func, name) \
+    { \
+        MDNS::Status status; \
+        if ((status = func) != MDNS::Success) { \
+            Serial.printf("MDNS %s: error=%s\n", name, MDNS::toString(status).c_str()); \
+            esp_deep_sleep_start(); \
+        } \
+    }
+
 void setup() {
 
     Serial.begin(115200);
@@ -174,18 +184,14 @@ void setup() {
     Serial.printf("MDNS startup\n");
     udp = new WiFiUDP();
     mdns = new MDNS(*udp);
-    auto status = mdns->begin();
-    if (status != MDNS::Success)
-        Serial.printf("MDNS begin: error=%d\n", status);
-    mdns->serviceRecordInsert(MDNS::ServiceTCP, 80, "webserver._http", { "type=example", "not_really=true" });
-    mdns->serviceRecordInsert(MDNS::ServiceUDP, 1234, "proprietary._udp", { "name=whatever", "something=false" });
-    mdns->start(WiFi.localIP(), WIFI_HOST);
+    HALT_ON_MDNS_ERROR(mdns->begin(), "begin");
+    HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(MDNS::ServiceTCP, 80, "webserver._http", { "type=example", "not_really=true" }), "serviceRecordInsert");
+    HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(MDNS::ServiceUDP, 1234, "proprietary._udp", { "name=whatever", "something=false" }), "serviceRecordInsert");
+    HALT_ON_MDNS_ERROR(mdns->start(WIFI_ADDR, WIFI_HOST), "start");
 }
 
 void loop() {
-    auto status = mdns->process();
-    if (status != MDNS::Success)
-        Serial.printf("MDNS process: error=%d\n", status);
+    HALT_ON_MDNS_ERROR(mdns->process(), "process");
     delay(500);
 }
 
