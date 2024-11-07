@@ -43,16 +43,16 @@ struct KnownAnswer {
     uint32_t ttl;
     uint64_t receivedAt;
     std::vector<uint8_t> rdata;  // Record-specific data
-    
+
     bool isExpired(uint64_t now) const {
-        return (now - receivedAt) >= ((uint64_t)ttl * 1000); 
+        return (now - receivedAt) >= ((uint64_t)ttl * 1000);
     }
 };
 struct RecentQuestion {
     String name;
     uint16_t recordType;
     uint64_t askedAt;
-    
+
     bool isExpired(uint64_t now) const {
         return (now - askedAt) >= 1000; // 1 second suppression window
     }
@@ -84,7 +84,7 @@ bool MDNS::_shouldSuppressAnswer(const String& name, uint16_t recordType, const 
     auto now = millis();
     for (const auto& ka : _knownAnswers)
         if (ka.name == name && ka.recordType == recordType && !ka.isExpired(now))
-            if (ka.rdata.size() == rdataLen && 
+            if (ka.rdata.size() == rdataLen &&
                 memcmp(ka.rdata.data(), rdata, rdataLen) == 0) {
                 DEBUG_PRINTF("MDNS: suppressing known answer for %s\n", name.c_str());
                 return true;
@@ -128,14 +128,14 @@ void MDNS::_recordRecentQuestion(const String& name, uint16_t recordType) {
 for (int i = 0; i < dnsHeader.answerCount; i++) {
     std::vector<String> labels;
     int rLen;
-    
+
     // Read name
     do {
         if (offset >= udp_len) break;
         rLen = _udp->read();
         if (rLen < 0) break;
         offset++;
-        
+
         if ((rLen & DNS_COMPRESS_MARK) == DNS_COMPRESS_MARK) {
             if (offset >= udp_len) goto bad_packet;
             int xLen = _udp->read();
@@ -153,7 +153,7 @@ for (int i = 0; i < dnsHeader.answerCount; i++) {
             labels.push_back(label);
         }
     } while (rLen > 0 && rLen <= DNS_LABEL_LENGTH_MAX);
-    
+
     // Read record type, class, TTL, and length
     uint8_t recordData[10];
     for (int j = 0; j < 10; j++) {
@@ -163,7 +163,7 @@ for (int i = 0; i < dnsHeader.answerCount; i++) {
         offset++;
         recordData[j] = (uint8_t)r;
     }
-    
+
     uint16_t recordType = (recordData[0] << 8) | recordData[1];
     uint32_t ttl = (recordData[4] << 24) | (recordData[5] << 16) | (recordData[6] << 8) | recordData[7];
     uint16_t rdataLen = (recordData[8] << 8) | recordData[9];
@@ -177,7 +177,7 @@ for (int i = 0; i < dnsHeader.answerCount; i++) {
         offset++;
         rdata[j] = (uint8_t)r;
     }
-    
+
     String name = join(labels, ".");
     _recordKnownAnswer(name, recordType, ttl, rdata.data(), rdataLen);
 }
@@ -217,25 +217,24 @@ class ProbeManager {
 private:
     static constexpr uint32_t PROBE_DEFER_TIME_MS = 1000;  // 1 second defer time
     static constexpr uint32_t PROBE_TIEBREAK_THRESHOLD_MS = 200;  // 200ms threshold
-    
+
     MDNS& _mdns;
     uint32_t _probeStartTime;
     uint32_t _nextProbeTime;
     uint8_t _probeCount;
     bool _probing;
-    
+
 public:
-    explicit ProbeManager(MDNS& mdns) : 
-        _mdns(mdns), _probeStartTime(0), _nextProbeTime(0), 
+    explicit ProbeManager(MDNS& mdns) :
+        _mdns(mdns), _probeStartTime(0), _nextProbeTime(0),
         _probeCount(0), _probing(false) {}
-    
+
     void startProbing();
     void stopProbing();
     bool handleIncomingProbe(const String& name, const IPAddress& remoteIP);
     bool isProbing() const { return _probing; }
     void processTimeouts();
 };
-
 
 // Add these as members to the MDNS class
 private:
@@ -254,23 +253,23 @@ void ProbeManager::stopProbing() {
 
 bool ProbeManager::handleIncomingProbe(const String& name, const IPAddress& remoteIP) {
     if (!_probing) return false;
-    
+
     bool shouldDefer = remoteIP > _mdns._ipAddress;
-    
+
     if (shouldDefer) {
         if (millis() - _probeStartTime < PROBE_TIEBREAK_THRESHOLD_MS)
-            _probeCount = 0;        
+            _probeCount = 0;
         _nextProbeTime = millis() + PROBE_DEFER_TIME_MS;
         DEBUG_PRINTF("MDNS: Probe deferred for %s due to %s\n",  name.c_str(), remoteIP.toString().c_str());
         return true;
     }
-    
+
     return false;
 }
 
 void ProbeManager::processTimeouts() {
     if (!_probing) return;
-    
+
     uint32_t now = millis();
     if (now >= _nextProbeTime) {
         if (_probeCount < DNS_PROBE_COUNT) {
@@ -284,7 +283,7 @@ void ProbeManager::processTimeouts() {
     }
 }
 
-MDNS::MDNS(UDP& udp) : 
+MDNS::MDNS(UDP& udp) :
     _udp(&udp), _active(false), _announceLast(0),
     _probeManager(*this) {
 }
@@ -344,15 +343,15 @@ class UnicastHandler {
 private:
     MDNS& _mdns;
     static constexpr uint32_t UNICAST_TTL = 10;  // Shorter TTL for unicast responses
-    
+
 public:
     explicit UnicastHandler(MDNS& mdns) : _mdns(mdns) {}
-    
+
     bool isUnicastQuery(const IPAddress& sourceIP, uint16_t sourcePort) const {
         return sourcePort != DNS_MDNS_PORT;
-    }    
+    }
     // Handle incoming unicast query
-    void handleQuery(const String& name, uint16_t type, const IPAddress& sourceIP, uint16_t sourcePort);               
+    void handleQuery(const String& name, uint16_t type, const IPAddress& sourceIP, uint16_t sourcePort);
     // Modify TTL for unicast responses
     uint32_t adjustTTL(uint32_t originalTTL) const {
         return std::min(originalTTL, UNICAST_TTL);
@@ -367,18 +366,18 @@ private:
         uint16_t port;
         uint64_t requestTime;
     };
-    
+
     MDNS& _mdns;
     std::vector<ServiceBrowseRequest> _browseRequests;
     static constexpr uint32_t BROWSE_TIMEOUT_MS = 3000;
-    
+
 public:
     explicit ServiceEnumerationHandler(MDNS& mdns) : _mdns(mdns) {}
-    
+
     void handleBrowseRequest(const IPAddress& source, uint16_t port);
     void sendServiceResponse(const ServiceRecord& service, bool immediate = false);
     void cleanup();
-    
+
     // Load distribution helper
     bool shouldRespondNow(const IPAddress& source) const;
 };
@@ -392,15 +391,15 @@ private:
         uint8_t remainingAttempts;
         uint64_t nextAttemptTime;
     };
-    
+
     MDNS& _mdns;
     std::vector<PendingGoodbye> _pendingGoodbyes;
     static constexpr uint8_t GOODBYE_REPEAT_COUNT = 3;
     static constexpr uint32_t GOODBYE_INTERVAL_MS = 250;
-    
+
 public:
     explicit DepartureHandler(MDNS& mdns) : _mdns(mdns) {}
-    
+
     void announceGoodbye(const String& name, uint16_t type);
     void announceServiceGoodbye(const ServiceRecord& service);
     void handleReceivedGoodbye(const String& name, uint16_t type);
@@ -432,15 +431,15 @@ void UnicastHandler::handleQuery(const String& name, uint16_t type, const IPAddr
 
 void ServiceEnumerationHandler::handleBrowseRequest(
     const IPAddress& source, uint16_t port) {
-    
+
     cleanup();  // Remove expired requests
-    
+
     // Record this browse request
     _browseRequests.push_back({ source, port, millis() });
-    
+
     // Determine if we should respond immediately or delay
     bool immediate = shouldRespondNow(source);
-    
+
     // Send responses for all services
     for (const auto& service : _mdns._serviceRecords)
         sendServiceResponse(service, immediate);
@@ -448,36 +447,36 @@ void ServiceEnumerationHandler::handleBrowseRequest(
 
 void ServiceEnumerationHandler::sendServiceResponse(
     const ServiceRecord& service, bool immediate) {
-    
+
     // Calculate response delay based on network load
     uint32_t delay = immediate ? 0 : random(20, 120);
-    
+
     // Schedule responses in correct order:
     // 1. PTR record for service type
     _mdns._responseScheduler.scheduleResponse(service.fqsn, DNS_RECORD_PTR, false, IPAddress(), 0, delay);
-    
+
     // 2. SRV record with slightly longer delay
     _mdns._responseScheduler.scheduleResponse(service.name, DNS_RECORD_SRV, false, IPAddress(), 0, delay + 1);
-    
+
     // 3. TXT record
     _mdns._responseScheduler.scheduleResponse(service.name, DNS_RECORD_TXT, false, IPAddress(), 0, delay + 2);
-    
+
     // 4. A record for host
     _mdns._responseScheduler.scheduleResponse(_mdns._name, DNS_RECORD_A, false, IPAddress(), 0, delay + 3);
 }
 
 bool ServiceEnumerationHandler::shouldRespondNow(
     const IPAddress& source) const {
-    
+
     // Implement load distribution algorithm
     size_t knownResponders = 0;
     size_t ourPosition = 0;
-    
+
     for (const auto& req : _browseRequests) {
         if (req.requester < source) knownResponders++;
         if (req.requester < _mdns._ipAddress) ourPosition++;
     }
-    
+
     // Respond immediately if we're one of the first few responders
     return ourPosition <= (knownResponders / 4);
 }
@@ -502,27 +501,27 @@ void DepartureHandler::announceServiceGoodbye(const ServiceRecord& service) {
 
 void DepartureHandler::handleReceivedGoodbye(
     const String& name, uint16_t type) {
-    
+
     DEBUG_PRINTF("MDNS: Received goodbye for %s\n", name.c_str());
-    
+
     // Remove from cache immediately
     _mdns._cacheManager.handleCacheFlush(name, type);
-    
+
     // Notify POOF manager
     _mdns._poofManager.recordExpired(name, type);
 }
 
 void DepartureHandler::process() {
     uint64_t now = millis();
-    
-    for (auto it = _pendingGoodbyes.begin(); 
+
+    for (auto it = _pendingGoodbyes.begin();
          it != _pendingGoodbyes.end();) {
-        
+
         if (now >= it->nextAttemptTime) {
             // Send goodbye packet (TTL=0)
-            _mdns._messageSend(XID_DEFAULT, PacketTypeGoodbye, 
+            _mdns._messageSend(XID_DEFAULT, PacketTypeGoodbye,
                              it->name, it->type);
-            
+
             if (--it->remainingAttempts > 0) {
                 // Schedule next attempt
                 it->nextAttemptTime = now + GOODBYE_INTERVAL_MS;
@@ -540,8 +539,8 @@ void DepartureHandler::process() {
 // Integration in main MDNS methods:
 
 // In constructor:
-MDNS::MDNS(UDP& udp) : 
-    _udp(&udp), 
+MDNS::MDNS(UDP& udp) :
+    _udp(&udp),
     _unicastHandler(*this),
     _serviceEnumHandler(*this),
     _departureHandler(*this),
@@ -550,15 +549,15 @@ MDNS::MDNS(UDP& udp) :
 
 // In _messageRecv():
 if (_unicastHandler.isUnicastQuery(_udp->remoteIP(), _udp->remotePort())) {
-    _unicastHandler.handleQuery(name, type, 
-                              _udp->remoteIP(), 
+    _unicastHandler.handleQuery(name, type,
+                              _udp->remoteIP(),
                               _udp->remotePort());
     return Success;
 }
 
 // When processing PTR queries for "_services._dns-sd._udp.local":
 if (name == SERVICE_SD_FQSN) {
-    _serviceEnumHandler.handleBrowseRequest(_udp->remoteIP(), 
+    _serviceEnumHandler.handleBrowseRequest(_udp->remoteIP(),
                                           _udp->remotePort());
     return Success;
 }
@@ -583,14 +582,14 @@ Status MDNS::stop(void) {
         }
         // Announce departure for our hostname
         _departureHandler.announceGoodbye(_name, DNS_RECORD_A);
-        
+
         // Wait for goodbyes to be sent
         unsigned long start = millis();
         while (millis() - start < 1000) {
             _departureHandler.process();
             delay(50);
         }
-        
+
         _udp->stop();
         _active = false;
     }
