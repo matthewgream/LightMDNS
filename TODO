@@ -1,0 +1,574 @@
+
+/*
+
+Known Answer Tracking:
+    Maintains a fixed-size cache of known answers
+    Records include name, type, TTL, and actual record data
+    Automatically expires records based on TTL
+    Compares full record data to ensure exact matches
+Duplicate Question Suppression:
+    Tracks recent questions with a 1-second window
+    Uses fixed-size buffer to prevent memory growth
+    Only suppresses exact matches (name + type)
+    Auto-expires after 1 second per RFC
+
+struct KnownAnswer {
+    String name;
+    uint16_t recordType;
+    uint32_t ttl;
+    uint64_t receivedAt;
+    std::vector<uint8_t> rdata;  // Record-specific data
+
+    bool isExpired(uint64_t now) const {
+        return (now - receivedAt) >= ((uint64_t)ttl * 1000);
+    }
+};
+struct RecentQuestion {
+    String name;
+    uint16_t recordType;
+    uint64_t askedAt;
+
+    bool isExpired(uint64_t now) const {
+        return (now - askedAt) >= 1000; // 1 second suppression window
+    }
+};
+
+static constexpr size_t MAX_KNOWN_ANSWERS = 32;
+static constexpr size_t MAX_RECENT_QUESTIONS = 16;
+std::vector<KnownAnswer> _knownAnswers;
+std::vector<RecentQuestion> _recentQuestions;
+
+private:
+    void _cleanupExpiredRecords();
+    bool _shouldSuppressAnswer(const String& name, uint16_t recordType, const uint8_t* rdata, size_t rdataLen);
+    bool _shouldSuppressQuestion(const String& name, uint16_t recordType);
+    void _recordKnownAnswer(const String& name, uint16_t recordType, uint32_t ttl, const uint8_t* rdata, size_t rdataLen);
+    void _recordRecentQuestion(const String& name, uint16_t recordType);
+
+void MDNS::_cleanupExpiredRecords() {
+    auto now = millis();
+
+    std::erase_if(_knownAnswers, [now](const KnownAnswer& ka) {
+        return ka.isExpired(now);
+    });
+        std::erase_if(_recentQuestions, [now](const RecentQuestion& rq) {
+        return rq.isExpired(now);
+    });
+}
+bool MDNS::_shouldSuppressAnswer(const String& name, uint16_t recordType, const uint8_t* rdata, size_t rdataLen) {
+    auto now = millis();
+    for (const auto& ka : _knownAnswers)
+        if (ka.name == name && ka.recordType == recordType && !ka.isExpired(now))
+            if (ka.rdata.size() == rdataLen &&
+                memcmp(ka.rdata.data(), rdata, rdataLen) == 0) {
+                DEBUG_PRINTF("MDNS: suppressing known answer for %s\n", name.c_str());
+                return true;
+            }
+    return false;
+}
+bool MDNS::_shouldSuppressQuestion(const String& name, uint16_t recordType) {
+    auto now = millis();
+    for (const auto& rq : _recentQuestions)
+        if (rq.name == name && rq.recordType == recordType && !rq.isExpired(now)) {
+            DEBUG_PRINTF("MDNS: suppressing duplicate question for %s\n", name.c_str());
+            return true;
+        }
+    return false;
+}
+void MDNS::_recordKnownAnswer(const String& name, uint16_t recordType, uint32_t ttl, const uint8_t* rdata, size_t rdataLen) {
+    if (_knownAnswers.size() >= MAX_KNOWN_ANSWERS)
+        _knownAnswers.erase(_knownAnswers.begin());
+    KnownAnswer ka;
+    ka.name = name;
+    ka.recordType = recordType;
+    ka.ttl = ttl;
+    ka.receivedAt = millis();
+    ka.rdata.assign(rdata, rdata + rdataLen);
+    _knownAnswers.push_back(std::move(ka));
+}
+void MDNS::_recordRecentQuestion(const String& name, uint16_t recordType) {
+    if (_recentQuestions.size() >= MAX_RECENT_QUESTIONS)
+        _recentQuestions.erase(_recentQuestions.begin());
+    RecentQuestion rq;
+    rq.name = name;
+    rq.recordType = recordType;
+    rq.askedAt = millis();
+    _recentQuestions.push_back(std::move(rq));
+}
+
+// Modify _messageRecv() to handle Known Answers in responses
+// ...
+
+// Process Known Answer section
+for (int i = 0; i < dnsHeader.answerCount; i++) {
+    std::vector<String> labels;
+    int rLen;
+
+    // Read name
+    do {
+        if (offset >= udp_len) break;
+        rLen = _udp->read();
+        if (rLen < 0) break;
+        offset++;
+
+        if ((rLen & DNS_COMPRESS_MARK) == DNS_COMPRESS_MARK) {
+            if (offset >= udp_len) goto bad_packet;
+            int xLen = _udp->read();
+            if (xLen < 0) goto bad_packet;
+            offset++;
+        } else if (rLen > 0) {
+            String label;
+            for (int z = 0; z < rLen; z++) {
+                if (offset >= udp_len) goto bad_packet;
+                int r = _udp->read();
+                if (r < 0) goto bad_packet;
+                offset++;
+                label += (char)r;
+            }
+            labels.push_back(label);
+        }
+    } while (rLen > 0 && rLen <= DNS_LABEL_LENGTH_MAX);
+
+    // Read record type, class, TTL, and length
+    uint8_t recordData[10];
+    for (int j = 0; j < 10; j++) {
+        if (offset >= udp_len) goto bad_packet;
+        int r = _udp->read();
+        if (r < 0) goto bad_packet;
+        offset++;
+        recordData[j] = (uint8_t)r;
+    }
+
+    uint16_t recordType = (recordData[0] << 8) | recordData[1];
+    uint32_t ttl = (recordData[4] << 24) | (recordData[5] << 16) | (recordData[6] << 8) | recordData[7];
+    uint16_t rdataLen = (recordData[8] << 8) | recordData[9];
+
+    // Read record data
+    std::vector<uint8_t> rdata(rdataLen);
+    for (int j = 0; j < rdataLen; j++) {
+        if (offset >= udp_len) goto bad_packet;
+        int r = _udp->read();
+        if (r < 0) goto bad_packet;
+        offset++;
+        rdata[j] = (uint8_t)r;
+    }
+
+    String name = join(labels, ".");
+    _recordKnownAnswer(name, recordType, ttl, rdata.data(), rdataLen);
+}
+
+// Before processing each query, add:
+String queryName = join(names, ".");
+if (_shouldSuppressQuestion(queryName, recordType)) {
+    continue; // Skip this query
+}
+_recordRecentQuestion(queryName, recordType);
+
+// In _messageSend(), before writing each record:
+if (_shouldSuppressAnswer(recordName, recordType, rdataBuffer, rdataLen)) {
+    continue; // Skip this response
+}
+
+Status MDNS::process(void) {
+    auto status = Success;
+    if (_active) {
+        _cleanupExpiredRecords();  // Add this line
+        ...
+    }
+    return status;
+}
+
+*/
+
+/*
+
+Probe Management:
+    Proper priority-based probe deferral
+    Correct timing for probe sequences
+    Handles probe conflicts per RFC
+    Clean integration with existing probe code
+
+class ProbeManager {
+private:
+    static constexpr uint32_t PROBE_DEFER_TIME_MS = 1000;  // 1 second defer time
+    static constexpr uint32_t PROBE_TIEBREAK_THRESHOLD_MS = 200;  // 200ms threshold
+
+    MDNS& _mdns;
+    uint32_t _probeStartTime;
+    uint32_t _nextProbeTime;
+    uint8_t _probeCount;
+    bool _probing;
+
+public:
+    explicit ProbeManager(MDNS& mdns) :
+        _mdns(mdns), _probeStartTime(0), _nextProbeTime(0),
+        _probeCount(0), _probing(false) {}
+
+    void startProbing();
+    void stopProbing();
+    bool handleIncomingProbe(const String& name, const IPAddress& remoteIP);
+    bool isProbing() const { return _probing; }
+    void processTimeouts();
+};
+
+// Add these as members to the MDNS class
+private:
+    ProbeManager _probeManager;
+
+void ProbeManager::startProbing() {
+    _probing = true;
+    _probeCount = 0;
+    _probeStartTime = millis();
+    _nextProbeTime = _probeStartTime;
+}
+
+void ProbeManager::stopProbing() {
+    _probing = false;
+}
+
+bool ProbeManager::handleIncomingProbe(const String& name, const IPAddress& remoteIP) {
+    if (!_probing) return false;
+
+    bool shouldDefer = remoteIP > _mdns._ipAddress;
+
+    if (shouldDefer) {
+        if (millis() - _probeStartTime < PROBE_TIEBREAK_THRESHOLD_MS)
+            _probeCount = 0;
+        _nextProbeTime = millis() + PROBE_DEFER_TIME_MS;
+        DEBUG_PRINTF("MDNS: Probe deferred for %s due to %s\n",  name.c_str(), remoteIP.toString().c_str());
+        return true;
+    }
+
+    return false;
+}
+
+void ProbeManager::processTimeouts() {
+    if (!_probing) return;
+
+    uint32_t now = millis();
+    if (now >= _nextProbeTime) {
+        if (_probeCount < DNS_PROBE_COUNT) {
+            _mdns._messageSend(XID_DEFAULT, PacketTypeProbe);
+            _probeCount++;
+            _nextProbeTime = now + DNS_PROBE_WAIT_MS;
+        } else {
+            _probing = false;
+            _mdns._messageSend(XID_DEFAULT, PacketTypeAddressRecord);
+        }
+    }
+}
+
+MDNS::MDNS(UDP& udp) :
+    _udp(&udp), _active(false), _announceLast(0),
+    _probeManager(*this) {
+}
+
+Status MDNS::start(const IPAddress& ip, const String& name, bool checkForConflicts) {
+    _ipAddress = ip;
+    _name = name + TLD;
+    auto status = Success;
+    if (!_active) {
+        if (!_udp->beginMulticast(ADDRESS_MULTICAST, DNS_MDNS_PORT))
+            status = Failure;
+        else _active = true;
+    }
+    if (status == Success && checkForConflicts)
+        _probeManager.startProbing();
+    return status;
+}
+
+Status MDNS::process(void) {
+    auto status = Success;
+    if (_active) {
+        _probeManager.processTimeouts();
+        ...
+    }
+    return status;
+}
+
+// In _messageRecv():
+// Add after parsing the header:
+if (_probeManager.isProbing() && dnsHeader.authorityCount > 0) {
+    if (_probeManager.handleIncomingProbe(join(names, "."), _udp->remoteIP()))
+        return Success;  // Deferred our probe
+}
+
+*/
+
+/*
+
+Legacy Unicast Handling:
+    Proper detection of unicast queries
+    TTL adjustment for unicast responses
+    Source-specific response routing
+    RFC-compliant timing
+Service Enumeration:
+    Load-balanced responses
+    Proper record ordering
+    Additional record inclusion
+    Efficient request tracking
+Goodbye Handling:
+    Reliable multi-packet goodbyes
+    Proper service teardown
+    Cache coherency maintenance
+    Immediate goodbye processing
+
+// Legacy Unicast Query Handler
+class UnicastHandler {
+private:
+    MDNS& _mdns;
+    static constexpr uint32_t UNICAST_TTL = 10;  // Shorter TTL for unicast responses
+
+public:
+    explicit UnicastHandler(MDNS& mdns) : _mdns(mdns) {}
+
+    bool isUnicastQuery(const IPAddress& sourceIP, uint16_t sourcePort) const {
+        return sourcePort != DNS_MDNS_PORT;
+    }
+    // Handle incoming unicast query
+    void handleQuery(const String& name, uint16_t type, const IPAddress& sourceIP, uint16_t sourcePort);
+    // Modify TTL for unicast responses
+    uint32_t adjustTTL(uint32_t originalTTL) const {
+        return std::min(originalTTL, UNICAST_TTL);
+    }
+};
+
+// Service Enumeration Handler
+class ServiceEnumerationHandler {
+private:
+    struct ServiceBrowseRequest {
+        IPAddress requester;
+        uint16_t port;
+        uint64_t requestTime;
+    };
+
+    MDNS& _mdns;
+    std::vector<ServiceBrowseRequest> _browseRequests;
+    static constexpr uint32_t BROWSE_TIMEOUT_MS = 3000;
+
+public:
+    explicit ServiceEnumerationHandler(MDNS& mdns) : _mdns(mdns) {}
+
+    void handleBrowseRequest(const IPAddress& source, uint16_t port);
+    void sendServiceResponse(const ServiceRecord& service, bool immediate = false);
+    void cleanup();
+
+    // Load distribution helper
+    bool shouldRespondNow(const IPAddress& source) const;
+};
+
+// Departure (Goodbye) Handler
+class DepartureHandler {
+private:
+    struct PendingGoodbye {
+        String name;
+        uint16_t type;
+        uint8_t remainingAttempts;
+        uint64_t nextAttemptTime;
+    };
+
+    MDNS& _mdns;
+    std::vector<PendingGoodbye> _pendingGoodbyes;
+    static constexpr uint8_t GOODBYE_REPEAT_COUNT = 3;
+    static constexpr uint32_t GOODBYE_INTERVAL_MS = 250;
+
+public:
+    explicit DepartureHandler(MDNS& mdns) : _mdns(mdns) {}
+
+    void announceGoodbye(const String& name, uint16_t type);
+    void announceServiceGoodbye(const ServiceRecord& service);
+    void handleReceivedGoodbye(const String& name, uint16_t type);
+    void process();
+};
+
+// Add to MDNS class private members:
+private:
+    UnicastHandler _unicastHandler;
+    ServiceEnumerationHandler _serviceEnumHandler;
+    DepartureHandler _departureHandler;
+
+// Implementation in ArduinoLightMDNS.cpp:
+
+void UnicastHandler::handleQuery(const String& name, uint16_t type, const IPAddress& sourceIP, uint16_t sourcePort) {
+    DEBUG_PRINTF("MDNS: Unicast query from %s:%u for %s\n", sourceIP.toString().c_str(), sourcePort, name.c_str());
+
+    if (type == DNS_RECORD_ANY || type == DNS_RECORD_A) {
+        if (_mdns._name == name) {
+            _mdns._responseScheduler.scheduleResponse(name, DNS_RECORD_A, true, sourceIP, sourcePort);
+        }
+    }
+    for (const auto& service : _mdns._serviceRecords) {
+        if (service.serv == name || service.name == name) {
+            _mdns._responseScheduler.scheduleResponse(name, type, true, sourceIP, sourcePort);
+        }
+    }
+}
+
+void ServiceEnumerationHandler::handleBrowseRequest(
+    const IPAddress& source, uint16_t port) {
+
+    cleanup();  // Remove expired requests
+
+    // Record this browse request
+    _browseRequests.push_back({ source, port, millis() });
+
+    // Determine if we should respond immediately or delay
+    bool immediate = shouldRespondNow(source);
+
+    // Send responses for all services
+    for (const auto& service : _mdns._serviceRecords)
+        sendServiceResponse(service, immediate);
+}
+
+void ServiceEnumerationHandler::sendServiceResponse(
+    const ServiceRecord& service, bool immediate) {
+
+    // Calculate response delay based on network load
+    uint32_t delay = immediate ? 0 : random(20, 120);
+
+    // Schedule responses in correct order:
+    // 1. PTR record for service type
+    _mdns._responseScheduler.scheduleResponse(service.serv, DNS_RECORD_PTR, false, IPAddress(), 0, delay);
+
+    // 2. SRV record with slightly longer delay
+    _mdns._responseScheduler.scheduleResponse(service.name, DNS_RECORD_SRV, false, IPAddress(), 0, delay + 1);
+
+    // 3. TXT record
+    _mdns._responseScheduler.scheduleResponse(service.name, DNS_RECORD_TXT, false, IPAddress(), 0, delay + 2);
+
+    // 4. A record for host
+    _mdns._responseScheduler.scheduleResponse(_mdns._name, DNS_RECORD_A, false, IPAddress(), 0, delay + 3);
+}
+
+bool ServiceEnumerationHandler::shouldRespondNow(
+    const IPAddress& source) const {
+
+    // Implement load distribution algorithm
+    size_t knownResponders = 0;
+    size_t ourPosition = 0;
+
+    for (const auto& req : _browseRequests) {
+        if (req.requester < source) knownResponders++;
+        if (req.requester < _mdns._ipAddress) ourPosition++;
+    }
+
+    // Respond immediately if we're one of the first few responders
+    return ourPosition <= (knownResponders / 4);
+}
+
+void ServiceEnumerationHandler::cleanup() {
+    uint64_t now = millis();
+    std::erase_if(_browseRequests, [now](const ServiceBrowseRequest& req) {
+        return (now - req.requestTime) > BROWSE_TIMEOUT_MS;
+    });
+}
+
+void DepartureHandler::announceGoodbye(const String& name, uint16_t type) {
+    _pendingGoodbyes.push_back({ name, type, GOODBYE_REPEAT_COUNT, millis() });
+}
+
+void DepartureHandler::announceServiceGoodbye(const ServiceRecord& service) {
+    // Announce goodbyes for all records associated with this service
+    announceGoodbye(service.name, DNS_RECORD_SRV);
+    announceGoodbye(service.name, DNS_RECORD_TXT);
+    announceGoodbye(service.serv, DNS_RECORD_PTR);
+}
+
+void DepartureHandler::handleReceivedGoodbye(
+    const String& name, uint16_t type) {
+
+    DEBUG_PRINTF("MDNS: Received goodbye for %s\n", name.c_str());
+
+    // Remove from cache immediately
+    _mdns._cacheManager.handleCacheFlush(name, type);
+
+    // Notify POOF manager
+    _mdns._poofManager.recordExpired(name, type);
+}
+
+void DepartureHandler::process() {
+    uint64_t now = millis();
+
+    for (auto it = _pendingGoodbyes.begin();
+         it != _pendingGoodbyes.end();) {
+
+        if (now >= it->nextAttemptTime) {
+            // Send goodbye packet (TTL=0)
+            _mdns._messageSend(XID_DEFAULT, PacketTypeGoodbye,
+                             it->name, it->type);
+
+            if (--it->remainingAttempts > 0) {
+                // Schedule next attempt
+                it->nextAttemptTime = now + GOODBYE_INTERVAL_MS;
+                ++it;
+            } else {
+                // All attempts completed
+                it = _pendingGoodbyes.erase(it);
+            }
+        } else {
+            ++it;
+        }
+    }
+}
+
+// Integration in main MDNS methods:
+
+// In constructor:
+MDNS::MDNS(UDP& udp) :
+    _udp(&udp),
+    _unicastHandler(*this),
+    _serviceEnumHandler(*this),
+    _departureHandler(*this),
+    // ... rest of initialization
+{}
+
+// In _messageRecv():
+if (_unicastHandler.isUnicastQuery(_udp->remoteIP(), _udp->remotePort())) {
+    _unicastHandler.handleQuery(name, type,
+                              _udp->remoteIP(),
+                              _udp->remotePort());
+    return Success;
+}
+
+// When processing PTR queries for "_services._dns-sd._udp.local":
+if (name == SERVICE_SD_FQSN) {
+    _serviceEnumHandler.handleBrowseRequest(_udp->remoteIP(),
+                                          _udp->remotePort());
+    return Success;
+}
+
+// In process():
+Status MDNS::process(void) {
+    auto status = Success;
+    if (_active) {
+        _departureHandler.process();
+        _serviceEnumHandler.cleanup();
+        // ... rest of process
+    }
+    return status;
+}
+
+// In stop():
+Status MDNS::stop(void) {
+    if (_active) {
+        // Announce departure for all services
+        for (const auto& service : _serviceRecords) {
+            _departureHandler.announceServiceGoodbye(service);
+        }
+        // Announce departure for our hostname
+        _departureHandler.announceGoodbye(_name, DNS_RECORD_A);
+
+        // Wait for goodbyes to be sent
+        unsigned long start = millis();
+        while (millis() - start < 1000) {
+            _departureHandler.process();
+            delay(50);
+        }
+
+        _udp->stop();
+        _active = false;
+    }
+    return Success;
+}
+
+*/

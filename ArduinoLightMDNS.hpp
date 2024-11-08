@@ -71,41 +71,36 @@ public:
         uint16_t port;
         ServiceProtocol proto;
         String name;
-        String fqsn;
+        String serv;
         ServiceTextRecords textRecords;
     } ServiceRecord;
 
 private:
     UDP* _udp;
-    IPAddress _ipAddress;
+    IPAddress _addr;
     String _name, _fqhn, _arpa;
     bool _active;
 
-    Status _messageSend(const uint16_t xid, const int type, const ServiceRecord* serviceRecord = nullptr);
     Status _messageRecv(void);
-    bool _isAddressValid(const IPAddress& addr) const;
+    Status _messageSend(const uint16_t xid, const int type, const ServiceRecord* serviceRecord = nullptr);
 
     unsigned long _announceLast;
     Status _announce(void);
     Status _conflicted(void);
 
-    struct Buffer {
-        uint8_t* data;
-        const size_t size;
-    };
     std::vector<ServiceRecord> _serviceRecords;
-    void _writeNSECRecord(Buffer* buffer, const ServiceRecord* serviceRecord, const uint32_t ttl, const bool cacheFlush) const;
-    void _writeCompleteRecord(Buffer* buffer, const uint32_t ttl, const bool cacheFlush = true, const bool anyType = false) const;
-    void _writeReverseRecord(Buffer* buffer, const uint32_t ttl) const;
-    void _writeAddressRecord(Buffer* buffer, const uint32_t ttl, const bool cacheFlush = true, const bool anyTime = false) const;
-    void _writeServiceRecord(Buffer* buffer, const ServiceRecord* serviceRecord, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional = false) const;
+    void _writeNSECRecord(const ServiceRecord* serviceRecord, const uint32_t ttl, const bool cacheFlush) const;
+    void _writeCompleteRecord(const uint32_t ttl, const bool cacheFlush = true, const bool anyType = false) const;
+    void _writeReverseRecord(const uint32_t ttl) const;
+    void _writeAddressRecord(const uint32_t ttl, const bool cacheFlush = true, const bool anyTime = false) const;
+    void _writeServiceRecord(const ServiceRecord* serviceRecord, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional = false) const;
     size_t _sizeofServiceRecord(const ServiceRecord* record, const bool includeAdditional = false) const;
-    void _writeDNSName(Buffer* buffer, const String& name) const;
+    void _writeDNSName(const String& name) const;
     size_t _sizeofDNSName(const String& name) const;
-    void _writeBits(Buffer* buffer, const uint8_t byte1, const uint8_t byte2, const uint8_t byte3, const uint8_t byte4, const uint32_t ttl) const;
-    void _writeLength(Buffer* buffer, const uint16_t length) const;
-    void _writeNameLengthAndContent(Buffer* buffer, const String& name) const;
-    void _writeAddressLengthAndContent(Buffer* buffer, const IPAddress& address) const;
+    void _writeNameLengthAndContent(const String& name) const;
+    void _writeAddressLengthAndContent(const IPAddress& address) const;
+    void _writeLength(const uint16_t length) const;
+    void _writeBits(const uint8_t byte1, const uint8_t byte2, const uint8_t byte3, const uint8_t byte4, const uint32_t ttl) const;
 
 public:
     explicit MDNS(UDP& udp);
