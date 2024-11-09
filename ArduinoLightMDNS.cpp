@@ -185,7 +185,6 @@ static inline uint32_t _configureTTL(const MDNS::TTLConfig& ttls, const uint32_t
     return ttl == 0 ? 0 : (isShared ? std::min(ttl, ttls.shared_max) : ttl);
 }
 
-
 // -----------------------------------------------------------------------------------------------
 
 enum class DNSSection {
@@ -1599,7 +1598,6 @@ static size_t _sizeofServiceRecord(const MDNS::Service& service, const String& f
     }
     return size;
 }
-
 
 // -----------------------------------------------------------------------------------------------
 

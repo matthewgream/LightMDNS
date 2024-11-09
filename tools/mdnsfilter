@@ -1,0 +1,26 @@
+#!/bin/bash
+
+hostname=${1:-arduinoLightMDNS}
+
+avahi-browse -v -a -r | awk '
+   BEGIN { 
+       host = tolower(ARGV[1])
+       ARGV[1] = ""
+       printing = 0 
+   }
+   /^=/ {
+       header = $0
+       getline
+       if (tolower($0) ~ "hostname = \\[.*" host ".*\\]") {
+           printing = 1
+           print header
+           print $0
+       } else {
+           printing = 0
+       }
+       next
+   }
+   printing == 1 {
+       print $0
+   }
+' "$hostname"

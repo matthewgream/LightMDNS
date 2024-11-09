@@ -213,7 +213,7 @@ void setup() {
             .text = MDNSTXTRecord().build()
                 .add("type", "example")
                 .add("notreally", true)
-        }   
+        }
     ), "serviceRecordInsert");
 
     HALT_ON_MDNS_ERROR(mdns->start(WIFI_ADDR, WIFI_HOST), "start");
