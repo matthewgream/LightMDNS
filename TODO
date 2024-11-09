@@ -1,5 +1,231 @@
 
 /*
+class DNSNameCompressor {
+    struct NameOffset {
+        String name;
+        uint16_t offset;
+    };
+    std::vector<NameOffset> offsets;
+    uint16_t current_offset;
+
+public:
+    DNSNameCompressor() : current_offset(sizeof(Header)) {}
+    
+    void writeName(UDP* udp, const String& name) {
+        // Check for existing name
+        for (const auto& entry : offsets) {
+            if (name.equalsIgnoreCase(entry.name)) {
+                uint16_t pointer = 0xC000 | entry.offset;
+                uint8_t buffer[2];
+                _encodeUint16(buffer, pointer);
+                UDP_WRITE_DATA(buffer, 2);
+                return;
+            }
+        }
+
+        // Store new name offset
+        offsets.push_back({name, current_offset});
+        
+        // Write name with length validation
+        size_t total_len = 0;
+        const char* src = name.c_str();
+        while (*src) {
+            size_t label_len = 0;
+            const char* dot = strchr(src, '.');
+            if (!dot) dot = src + strlen(src);
+            label_len = dot - src;
+            
+            if (label_len > DNS_LABEL_LENGTH_MAX) return;
+            total_len += label_len + 1;
+            if (total_len > DNS_NAME_LENGTH_MAX) return;
+            
+            UDP_WRITE_BYTE(label_len);
+            UDP_WRITE_DATA((uint8_t*)src, label_len);
+            
+            current_offset += label_len + 1;
+            src = *dot ? dot + 1 : dot;
+        }
+        UDP_WRITE_BYTE(0);
+        current_offset++;
+    }
+};
+*/
+
+/*
+class TXTRecord {
+public:
+    // RFC 6763 Section 6.4 - Key names must be printable ASCII
+    static constexpr size_t KEY_LENGTH_MAX = 9;      // RFC recommendation
+    static constexpr size_t VALUE_LENGTH_MAX = 255;  // DNS limitation
+    static constexpr size_t TOTAL_LENGTH_MAX = 255;  // Per TXT string
+
+    struct Entry {
+        String key;
+        std::vector<uint8_t> value;
+        bool binary;  // Indicates if value needs special encoding
+    };
+
+private:
+    std::vector<Entry> entries;
+    mutable uint16_t cached_length{0};
+    mutable bool length_valid{false};
+
+    static bool isValidKeyChar(char c) {
+        // RFC 6763 Section 6.4
+        return (c >= 0x20 && c <= 0x7E) && c != '=';
+    }
+
+    bool validateKey(const String& key) const {
+        if (key.isEmpty() || key.length() > KEY_LENGTH_MAX) 
+            return false;
+            
+        return std::all_of(key.begin(), key.end(), isValidKeyChar);
+    }
+
+public:
+    Status addEntry(const String& key, const void* value = nullptr, 
+                   size_t value_len = 0, bool is_binary = false) {
+        if (!validateKey(key))
+            return InvalidArgument;
+
+        // Check if key already exists
+        auto it = std::find_if(entries.begin(), entries.end(),
+            [&key](const Entry& e) { return e.key.equalsIgnoreCase(key); });
+        
+        if (it != entries.end()) {
+            // Update existing entry
+            it->value.assign(static_cast<const uint8_t*>(value),
+                           static_cast<const uint8_t*>(value) + value_len);
+            it->binary = is_binary;
+        } else {
+            // Add new entry
+            entries.push_back({
+                key,
+                std::vector<uint8_t>(static_cast<const uint8_t*>(value),
+                                   static_cast<const uint8_t*>(value) + value_len),
+                is_binary
+            });
+        }
+
+        length_valid = false;
+        return Success;
+    }
+
+    // Convenience methods for common types
+    Status addString(const String& key, const String& value) {
+        return addEntry(key, value.c_str(), value.length());
+    }
+
+    Status addFlag(const String& key) {
+        return addEntry(key); // Value-less entry
+    }
+
+    Status addInt(const String& key, int value) {
+        char buf[12];
+        snprintf(buf, sizeof(buf), "%d", value);
+        return addEntry(key, buf, strlen(buf));
+    }
+
+    uint16_t encodedLength() const {
+        if (!length_valid) {
+            cached_length = 0;
+            for (const auto& entry : entries) {
+                size_t entry_len = entry.key.length();
+                if (!entry.value.empty()) {
+                    entry_len += 1; // '='
+                    entry_len += entry.binary ? 
+                        Base64.encodedLength(entry.value.size()) : 
+                        entry.value.size();
+                }
+                
+                if (entry_len > TOTAL_LENGTH_MAX) {
+                    // Handle overflow - split into multiple TXT records
+                    cached_length += (entry_len / TOTAL_LENGTH_MAX + 1);
+                } else {
+                    cached_length += 1; // Length byte
+                }
+            }
+            length_valid = true;
+        }
+        return cached_length;
+    }
+
+    void writeTo(UDP* udp) const {
+        for (const auto& entry : entries) {
+            String encoded;
+            encoded.reserve(TOTAL_LENGTH_MAX);
+            encoded += entry.key;
+            
+            if (!entry.value.empty()) {
+                encoded += '=';
+                if (entry.binary) {
+                    // Base64 encode binary values
+                    size_t b64_len = Base64.encodedLength(entry.value.size());
+                    char* b64_buf = new char[b64_len + 1];
+                    Base64.encode(b64_buf, 
+                                (char*)entry.value.data(), 
+                                entry.value.size());
+                    encoded += b64_buf;
+                    delete[] b64_buf;
+                } else {
+                    encoded += String((char*)entry.value.data(), 
+                                    entry.value.size());
+                }
+            }
+
+            // Split if necessary
+            for (size_t pos = 0; pos < encoded.length(); 
+                 pos += TOTAL_LENGTH_MAX) {
+                size_t chunk_len = std::min(encoded.length() - pos, 
+                                          (size_t)TOTAL_LENGTH_MAX);
+                UDP_WRITE_BYTE(chunk_len);
+                UDP_WRITE_DATA((uint8_t*)encoded.c_str() + pos, chunk_len);
+            }
+        }
+    }
+};
+
+*/
+
+/*
+class ResourceRecord {
+    DNSNameCompressor& compressor;
+    uint16_t record_start;
+    uint16_t length_offset;
+    
+public:
+    ResourceRecord(DNSNameCompressor& comp) : compressor(comp) {
+        record_start = comp.currentOffset();
+    }
+    
+    void writeName(UDP* udp, const String& name) {
+        compressor.writeName(udp, name);
+    }
+    
+    void writeHeader(UDP* udp, uint16_t type, bool cache_flush, uint32_t ttl) {
+        uint8_t buffer[8];
+        buffer[0] = DNS_RECORD_HI;
+        buffer[1] = type;
+        buffer[2] = cache_flush ? DNS_CACHE_FLUSH : DNS_CACHE_NO_FLUSH;
+        buffer[3] = DNS_CLASS_IN;
+        _encodeUint32(&buffer[4], ttl);
+        UDP_WRITE_DATA(buffer, 8);
+        length_offset = compressor.currentOffset();
+        _writeLength(udp, 0);  // Placeholder
+    }
+    
+    void finish(UDP* udp) {
+        uint16_t rdata_length = compressor.currentOffset() - length_offset - 2;
+        uint8_t buffer[2];
+        _encodeUint16(buffer, rdata_length);
+        // Seek back and write actual length
+        // (implementation dependent)
+    }
+};
+*/
+
+
+/*
 
 Known Answer Tracking:
     Maintains a fixed-size cache of known answers

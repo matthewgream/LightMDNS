@@ -185,8 +185,51 @@ void setup() {
     udp = new WiFiUDP();
     mdns = new MDNS(*udp);
     HALT_ON_MDNS_ERROR(mdns->begin(), "begin");
-    HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(MDNS::ServiceTCP, 80, "webserver._http", { "type=example", "not_really=true" }), "serviceRecordInsert");
-    HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(MDNS::ServiceUDP, 1234, "proprietary._udp", { "name=whatever", "something=false" }), "serviceRecordInsert");
+
+    // // 1. HTTP Print Service (IPP/AirPrint)
+    // DNSTXTRecord printTxt;
+    // printTxt.insert("txtvers", "1");
+    // printTxt.insert("rp", "printers/colorlaser");
+    // printTxt.insert("pdl", "application/pdf,image/jpeg,image/urf");
+    // printTxt.insert("Color");
+    // printTxt.insert("Duplex");
+    // printTxt.insert("UUID", "MFG92234741V");
+    // HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(MDNS::ServiceTCP, 631, "ColorLaser._ipp", printTxt), "serviceRecordInsert");
+
+    // // 2. MQTT Broker with SSL Certificate Fingerprint
+    // DNSTXTRecord mqttTxt;
+    // uint8_t cert_fingerprint[] = {
+    //     0x5A, 0x2E, 0x16, 0xC7, 0x61, 0x47, 0x83, 0x28, 0x39, 0x15, 0x56, 0x9C, 0x44, 0x7B, 0x89, 0x2B,
+    //     0x17, 0xD2, 0x44, 0x84, 0x96, 0xA4, 0xE2, 0x83, 0x90, 0x53, 0x47, 0xBB, 0x1C, 0x47, 0xF2, 0x5A
+    // };
+    // mqttTxt.insert("cert", cert_fingerprint, sizeof(cert_fingerprint), true);
+    // mqttTxt.insert("version", "3.1.1");
+    // mqttTxt.insert("secure");
+    // mqttTxt.insert("auth");
+    // HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(MDNS::ServiceTCP, 8883, "Secure-MQTT._mqtt", mqttTxt), "serviceRecordInsert");
+
+    // // 3. Home Automation Device (Matter/Thread)
+    // DNSTXTRecord matterTxt;
+    // uint8_t device_info[] = {
+    //     0x12,          // Protocol version
+    //     0x34, 0x56,    // Vendor ID
+    //     0x78, 0x9A,    // Product ID
+    //     0xBC,          // Device type
+    //     0x01, 0x02,    // Capabilities bitmap
+    //     0xFF           // Status flags
+    // };
+    // matterTxt.insert("vid", device_info, sizeof(device_info), true);
+    // matterTxt.insert("dt", 0x0201);
+    // matterTxt.insert("pi", "123456");
+    // matterTxt.insert("cm");
+    // matterTxt.insert("status", 1);
+    // HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(MDNS::ServiceUDP, 5540, "Matter-Device._matter", matterTxt), "serviceRecordInsert");
+
+    DNSTXTRecord webTxt;
+    // webTxt.insert("type", "example");
+    // webTxt.insert("not_really", true);
+    HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(MDNS::ServiceTCP, 80, "webserver._http", webTxt), "serviceRecordInsert");
+
     HALT_ON_MDNS_ERROR(mdns->start(WIFI_ADDR, WIFI_HOST), "start");
 }
 
