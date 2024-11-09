@@ -26,6 +26,7 @@
 #define __MDNS_H__ 1
 
 #include <Arduino.h>
+
 #include <vector>
 
 class MDNS {
@@ -94,7 +95,7 @@ private:
     void _writeReverseRecord(const uint32_t ttl) const;
     void _writeServiceRecord(const Service& service, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional = false) const;
     void _writeCompleteRecord(const uint32_t ttl, const bool cacheFlush = true, const bool anyType = false) const;
-    void _writeNextSecureRecord(const std::initializer_list<uint8_t> types, const String& name, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional = false) const;
+    void _writeNextSecureRecord(const String& name, const std::initializer_list<uint8_t>& types, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional = false) const;
 
 public:
     explicit MDNS(UDP& udp);

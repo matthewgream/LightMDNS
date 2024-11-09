@@ -26,6 +26,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+
 #include <Udp.h>
 
 #include "ArduinoLightMDNS.hpp"
@@ -397,6 +398,8 @@ static inline String makeReverseArpaName(const IPAddress& addr) {
     return String(addr[3]) + "." + String(addr[2]) + "." + String(addr[1]) + "." + String(addr[0]) + ".in-addr.arpa";
 }
 
+// -----------------------------------------------------------------------------------------------
+
 static inline size_t _sizeofDNSName(const String& name) {
     return name.length() + 2;    // string length + length byte + null terminator ('.'s just turn into byte lengths)
 }
@@ -615,6 +618,62 @@ struct UDP_READ_PACKET_CLASS {
         return true;
     }
 };
+
+    struct NameCollector {
+        MDNS& _mdns;
+        const Header& _header;
+        //
+        using LabelOffset = std::pair<String, uint16_t>;
+        using Labels = std::vector<LabelOffset>;
+        struct Name {
+            DNSSections section;
+            Labels labels;
+        };
+        using Names = std::vector<Name>;
+        Names _names;
+        //
+        String _uncompress(const size_t target) const {
+            for (const auto& name : _names)
+                for (const auto& [label, offset] : name.labels)
+                    if (target >= offset && target < (offset + label.length()))
+                        return (target == offset) ? label : label.substring(target - offset);
+            DEBUG_PRINTF("*** WARNING: could not uncompress at %u ***\n", target);
+            return String();
+        }
+        String _name(const Labels& labels) const {
+            return labels.empty() ? String() : std::accumulate(labels.begin(), labels.end(), String(), [](const String& acc, const LabelOffset& label) {
+                return acc.isEmpty() ? label.first : acc + "." + label.first;
+            });
+        }
+        //
+        String name() const {
+            return _names.empty() ? String() : _name(_names.back().labels);
+        }
+        std::vector<String> names(const DNSSections section = DNSSections::All) const {
+            std::vector<String> names;
+            for (const auto& name : _names)
+                if ((name.section & section) == name.section)
+                    names.push_back(_name(name.labels));
+            return names;
+        }
+        virtual void begin() {}
+        virtual void end() {}
+        void process_iscompressed(const uint16_t offs, const DNSSections, const uint16_t current) {
+            _names.back().labels.push_back(LabelOffset(_uncompress(offs), current));
+        }
+        void process_nocompressed(const String& label, const DNSSections, const uint16_t current) {
+            _names.back().labels.push_back(LabelOffset(label, current));
+        }
+        void process_begin(const DNSSections section, const uint16_t offset) {
+            _names.push_back({ .section = section, .labels = Labels() });
+        }
+        void process_update(const DNSSections, const uint8_t[4]) {
+        }
+        void process_end(const DNSSections, const uint16_t) {
+        }
+        NameCollector(MDNS& mdns, const Header& header)
+            : _mdns(mdns), _header(header){};
+    };
 
 #define UDP_WRITE_BEGIN() _udp->beginPacket(MDNS_ADDR_MULTICAST, MDNS_PORT)
 #define UDP_WRITE_END() _udp->endPacket()
@@ -860,66 +919,6 @@ MDNS::Status MDNS::_messageRecv() {
     if (header.truncated)
         DEBUG_PRINTF("MDNS: packet: received truncated from %s, but will proceed\n", UDP_READ_PEER_ADDR().toString().c_str());
 
-    /////////////////////////////////////////////
-
-    struct NameCollector {
-        MDNS& _mdns;
-        const Header& _header;
-        //
-        using LabelOffset = std::pair<String, uint16_t>;
-        using Labels = std::vector<LabelOffset>;
-        struct Name {
-            DNSSections section;
-            Labels labels;
-        };
-        using Names = std::vector<Name>;
-        Names _names;
-        //
-        String _uncompress(const size_t target) const {
-            for (const auto& name : _names)
-                for (const auto& [label, offset] : name.labels)
-                    if (target >= offset && target < (offset + label.length()))
-                        return (target == offset) ? label : label.substring(target - offset);
-            DEBUG_PRINTF("*** WARNING: could not uncompress at %u ***\n", target);
-            return String();
-        }
-        String _name(const Labels& labels) const {
-            return labels.empty() ? String() : std::accumulate(labels.begin(), labels.end(), String(), [](const String& acc, const LabelOffset& label) {
-                return acc.isEmpty() ? label.first : acc + "." + label.first;
-            });
-        }
-        //
-        String name() const {
-            return _names.empty() ? String() : _name(_names.back().labels);
-        }
-        std::vector<String> names(const DNSSections section = DNSSections::All) const {
-            std::vector<String> names;
-            for (const auto& name : _names)
-                if ((name.section & section) == name.section)
-                    names.push_back(_name(name.labels));
-            return names;
-        }
-        virtual void begin() {}
-        virtual void end() {}
-        void process_iscompressed(const uint16_t offs, const DNSSections, const uint16_t current) {
-            _names.back().labels.push_back(LabelOffset(_uncompress(offs), current));
-        }
-        void process_nocompressed(const String& label, const DNSSections, const uint16_t current) {
-            _names.back().labels.push_back(LabelOffset(label, current));
-        }
-        void process_begin(const DNSSections section, const uint16_t offset) {
-            _names.push_back({ .section = section, .labels = Labels() });
-        }
-        void process_update(const DNSSections, const uint8_t[4]) {
-        }
-        void process_end(const DNSSections, const uint16_t) {
-        }
-        NameCollector(MDNS& mdns, const Header& header)
-            : _mdns(mdns), _header(header){};
-    };
-
-    /////////////////////////////////////////////
-
     if ((header.authorityCount > 0 || header.queryResponse == DNS_QR_RESPONSE) && UDP_READ_PEER_PORT() == MDNS_PORT) {
 
         DEBUG_PRINTF("MDNS: packet: checking, %s / %s:%u\n", parseHeader(header).c_str(), UDP_READ_PEER_ADDR().toString().c_str(), UDP_READ_PEER_PORT());
@@ -940,6 +939,7 @@ MDNS::Status MDNS::_messageRecv() {
 
         DEBUG_PRINTF("MDNS: packet: processing, %s / %s:%u\n", parseHeader(header).c_str(), UDP_READ_PEER_ADDR().toString().c_str(), UDP_READ_PEER_PORT());
 
+        /////////////////////////////////////////////
         /////////////////////////////////////////////
 
         struct Responder {
@@ -1084,6 +1084,7 @@ MDNS::Status MDNS::_messageRecv() {
         } _responder(*this, header);
 
         /////////////////////////////////////////////
+        /////////////////////////////////////////////
 
         UDP_READ_PACKET_CLASS<Responder> processor(_responder, header, UDP_READ_PACKET_VARS);
         if (!processor.process())
@@ -1203,7 +1204,7 @@ MDNS::Status MDNS::_messageSend(const uint16_t xid, const int type, const Servic
 
         case PacketTypeNextSecure:
             DEBUG_PRINTF("MDNS: packet: sending NextSecure for supported types\n");
-            _writeNextSecureRecord({ DNS_RECORD_PTR, DNS_RECORD_SRV, service ? DNS_RECORD_TXT : DNS_RECORD_A }, service ? service->fqsn : _fqhn, DNS_TTL_DEFAULT, true, service ? true : false);
+            _writeNextSecureRecord(service ? service->fqsn : _fqhn, { DNS_RECORD_PTR, DNS_RECORD_SRV, service ? DNS_RECORD_TXT : DNS_RECORD_A }, DNS_TTL_DEFAULT, true, service ? true : false);
             break;
     }
 
@@ -1274,7 +1275,7 @@ struct DNSBitmap {
     inline size_t size() const {
         return static_cast<size_t>(data[1]);
     }
-    DNSBitmap(const std::initializer_list<uint8_t> types = {}) {
+    DNSBitmap(const std::initializer_list<uint8_t>& types = {}) {
         data[0] = NSEC_WINDOW_BLOCK_0;
         data[1] = 2;
         for (const auto& type : types)
@@ -1397,7 +1398,7 @@ void MDNS::_writeCompleteRecord(const uint32_t ttl, const bool cacheFlush, const
 
 // -----------------------------------------------------------------------------------------------
 
-void MDNS::_writeNextSecureRecord(const std::initializer_list<uint8_t> types, const String& name, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional) const {
+void MDNS::_writeNextSecureRecord(const String& name, const std::initializer_list<uint8_t>& types, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional) const {
 
     // if not a service, still have an SRV for DNS-SD
     DNSBitmap bitmap(types);
