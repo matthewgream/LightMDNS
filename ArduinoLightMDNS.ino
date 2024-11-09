@@ -176,7 +176,7 @@ MDNS *mdns;
 void setup() {
 
     Serial.begin(115200);
-    delay(5 * 1000);
+    delay(25 * 100);
 
     Serial.printf("WiFi startup\n");
     wiFiConnect();

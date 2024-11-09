@@ -66,58 +66,52 @@ public:
         else return "Unknown";
     }
 
-    using ServiceTextRecords = std::vector<String>;
+    using TextRecords = std::vector<String>;
     typedef struct {
         uint16_t port;
         ServiceProtocol proto;
-        String name;
-        String serv;
-        ServiceTextRecords textRecords;
-    } ServiceRecord;
+        String name, serv, fqsn;
+        TextRecords text;
+        uint16_t _cachedTextLength;
+    } Service;
+    using Services = std::vector<Service>;
 
 private:
     UDP* _udp;
     IPAddress _addr;
     String _name, _fqhn, _arpa;
-    bool _active;
+    bool _enabled;
 
     Status _messageRecv(void);
-    Status _messageSend(const uint16_t xid, const int type, const ServiceRecord* serviceRecord = nullptr);
+    Status _messageSend(const uint16_t xid, const int type, const Service* service = nullptr);
 
-    unsigned long _announceLast;
+    unsigned long _announced;
     Status _announce(void);
     Status _conflicted(void);
 
-    std::vector<ServiceRecord> _serviceRecords;
-    void _writeNSECRecord(const ServiceRecord* serviceRecord, const uint32_t ttl, const bool cacheFlush) const;
-    void _writeCompleteRecord(const uint32_t ttl, const bool cacheFlush = true, const bool anyType = false) const;
-    void _writeReverseRecord(const uint32_t ttl) const;
+    Services _services;
     void _writeAddressRecord(const uint32_t ttl, const bool cacheFlush = true, const bool anyTime = false) const;
-    void _writeServiceRecord(const ServiceRecord* serviceRecord, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional = false) const;
-    size_t _sizeofServiceRecord(const ServiceRecord* record, const bool includeAdditional = false) const;
-    void _writeDNSName(const String& name) const;
-    size_t _sizeofDNSName(const String& name) const;
-    void _writeNameLengthAndContent(const String& name) const;
-    void _writeAddressLengthAndContent(const IPAddress& address) const;
-    void _writeLength(const uint16_t length) const;
-    void _writeBits(const uint8_t byte1, const uint8_t byte2, const uint8_t byte3, const uint8_t byte4, const uint32_t ttl) const;
+    void _writeReverseRecord(const uint32_t ttl) const;
+    void _writeServiceRecord(const Service& service, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional = false) const;
+    void _writeCompleteRecord(const uint32_t ttl, const bool cacheFlush = true, const bool anyType = false) const;
+    void _writeNextSecureRecord(const std::initializer_list<uint8_t> types, const String& name, const uint32_t ttl, const bool cacheFlush, const bool includeAdditional = false) const;
 
 public:
     explicit MDNS(UDP& udp);
     virtual ~MDNS();
 
     Status begin(void);
-    Status start(const IPAddress& ip, const String& name = String(), const bool checkForConflicts = false);
+    Status start(const IPAddress& addr, const String& name = String(), const bool checkForConflicts = false);
     Status process(void);
     Status stop(void);
 
-    inline Status serviceRecordInsert(const ServiceRecord& record) {
-        return serviceRecordInsert(record.proto, record.port, record.name, record.textRecords);
+    inline Status serviceRecordInsert(const Service& service) {
+        return serviceRecordInsert(service.proto, service.port, service.name, service.text);
     }
-    inline Status serviceRecordRemove(const ServiceRecord& record) {
-        return serviceRecordRemove(record.proto, record.port, record.name);
+    inline Status serviceRecordRemove(const Service& service) {
+        return serviceRecordRemove(service.proto, service.port, service.name);
     }
-    Status serviceRecordInsert(const ServiceProtocol proto, const uint16_t port, const String& name, const ServiceTextRecords& textRecords = ServiceTextRecords());
+    Status serviceRecordInsert(const ServiceProtocol proto, const uint16_t port, const String& name, const TextRecords& textRecords = TextRecords());
     Status serviceRecordRemove(const ServiceProtocol proto, const uint16_t port, const String& name);
     Status serviceRecordClear(void);
 };
