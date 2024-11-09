@@ -64,7 +64,7 @@ static String join(const std::vector<String>& elements, const String& delimiter)
 static void dump(const char* label, const uint8_t* data, const size_t size, const size_t offs = 0) {
     DEBUG_PRINTF("    <%s: 0x%04X>\n", label, size);
     for (auto i = 0; i < size; i += 16) {
-        const auto left = (size - i < 16) ? size - i : 16;
+        const auto left = (i + 16) > size ? 16 : size - i;
         DEBUG_PRINTF("    0x%04X: ", offs + i);
         for (auto j = 0; j < 16; j++) {
             if (j < left) DEBUG_PRINTF("%02X ", data[i + j]);
@@ -295,10 +295,10 @@ static String parseDNSType(const uint16_t type) {
         default:
             {
                 String result = "Unknown(" + String(type, HEX) + ")";
-                if (type >= 0xFF00)
-                    result += "/Local";
-                else if (type >= 0xFFF0)
+                if (type >= 0xFFF0)
                     result += "/Reserved";
+                else if (type >= 0xFF00)
+                    result += "/Local";
                 return result;
             }
     }
@@ -473,7 +473,7 @@ struct UDP_READ_PACKET_CLASS {
     }
 
     bool _extractLabels(const DNSSections section, uint16_t* consumed = nullptr) {
-        uint8_t size = 0, comp = 0;
+        uint8_t size = 0, comp;
         uint16_t used = 0;
         do {
             const uint16_t offset = UDP_READ_OFFSET();
