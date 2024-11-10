@@ -28,6 +28,7 @@
 #include <Arduino.h>
 
 #include <vector>
+#include <set>
 
 // -----------------------------------------------------------------------------------------------
 
@@ -65,7 +66,7 @@ private:
     bool validate(const String& key) const;
 
 public:
-    bool insert(const String& key, const void* value, const size_t length, const bool is_binary = false);
+    bool insert(const String& key, const void* value, const size_t length, const bool is_binary);
 
     inline MDNSTXTBuilder build();
 
@@ -86,16 +87,20 @@ class MDNSTXTBuilder {
 private:
     MDNSTXTRecord& txt;
 
+protected:
+    inline MDNSTXTBuilder& _add(const String& key, const void* value, const size_t length, const bool is_binary) {
+        if (!txt.insert(key, value, length, is_binary)) throw std::runtime_error("TXT insert failed");
+        return *this;
+    }
+
 public:
     explicit MDNSTXTBuilder(MDNSTXTRecord& t)
         : txt(t) {}
     inline MDNSTXTBuilder& add(const String& key) {
-        if (!txt.insert(key, nullptr, 0, false)) throw std::runtime_error("TXT insert failed");
-        return *this;
+        return _add (key, nullptr, 0, false);
     }
     inline MDNSTXTBuilder& add(const String& key, const String& value) {
-        if (!txt.insert(key, reinterpret_cast<const uint8_t*>(value.c_str()), value.length(), false)) throw std::runtime_error("TXT insert failed");
-        return *this;
+        return _add (key, reinterpret_cast<const uint8_t*>(value.c_str()), value.length(), false);
     }
     inline MDNSTXTBuilder& add(const String& key, const char* value) {
         return add(key, String(value));
@@ -106,9 +111,8 @@ public:
     inline MDNSTXTBuilder& add(const String& key, const int value) {
         return add(key, String(value));
     }
-    inline MDNSTXTBuilder& add(const String& key, const void* value, const size_t length, const bool is_binary = false) {
-        if (!txt.insert(key, value, length, is_binary)) throw std::runtime_error("TXT insert failed");
-        return *this;
+    inline MDNSTXTBuilder& add(const String& key, const uint8_t* value, const size_t length) {
+        return _add (key, value, length, true);
     }
     inline operator MDNSTXTRecord&() {
         return txt;
@@ -167,7 +171,7 @@ public:
     struct ServiceConfig {
         uint16_t priority = 0x0000;
         uint16_t weight = 0x0000;
-        std::vector<String> subtypes;
+        // std::vector<String> subtypes;
     };
     typedef struct {
         uint16_t port;
@@ -178,25 +182,27 @@ public:
         String serv{}, fqsn{};
     } Service;
     using Services = std::vector<Service>;
+    using ServiceTypes = std::set<String>;
 
 private:
     UDP* _udp;
     IPAddress _addr;
     String _name, _fqhn, _arpa;
     TTLConfig _ttls;
-    bool _enabled;
+    bool _enabled{false};
 
     Status _messageRecv(void);
     Status _messageSend(const uint16_t xid, const int type, const Service* service = nullptr);
 
-    unsigned long _announced;
+    unsigned long _announced{0};
     Status _announce(void);
     Status _conflicted(void);
 
     Services _services;
+    ServiceTypes _serviceTypes;
     void _writeAddressRecord(const uint32_t ttl) const;
     void _writeReverseRecord(const uint32_t ttl) const;
-    void _writeServiceRecord(const Service& service, const uint32_t ttl, const bool includeAdditional = false, const bool isProbing = false) const;
+    void _writeServiceRecord(const Service& service, const uint32_t ttl) const;
     void _writeCompleteRecord(const uint32_t ttl) const;
     void _writeProbeRecord(const uint32_t ttl) const;
     void _writeNextSecureRecord(const String& name, const std::initializer_list<uint8_t>& types, const uint32_t ttl, const bool includeAdditional = false) const;

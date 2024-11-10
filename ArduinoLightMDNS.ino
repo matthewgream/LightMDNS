@@ -193,11 +193,9 @@ void setup() {
     };
     HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(
         MDNS::Service{
-            .port = 8883,
-            .proto = MDNS::ServiceTCP,
-            .name = "Secure-MQTT._mqtt",
+            .port = 8883, .proto = MDNS::ServiceTCP, .name = "Secure-MQTT._mqtt",
             .text = MDNSTXTRecord().build()
-                .add("cert", cert_fingerprint, sizeof(cert_fingerprint), true)
+                .add("cert", cert_fingerprint, sizeof(cert_fingerprint))
                 .add("version", "3.1.1")
                 .add("secure")
                 .add("auth")
@@ -207,9 +205,7 @@ void setup() {
     // 2. plain old web server
     HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(
         MDNS::Service{
-            .port = 80,
-            .proto = MDNS::ServiceTCP,
-            .name = "webserver._http",
+            .port = 80, .proto = MDNS::ServiceTCP, .name = "webserver._http",
             .text = MDNSTXTRecord().build()
                 .add("type", "example")
                 .add("notreally", true)
@@ -223,9 +219,7 @@ void setup() {
     // 3. HTTP Print Service (IPP/AirPrint)
     HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(
         MDNS::Service{
-            .port = 631,
-            .proto = MDNS::ServiceTCP,
-            .name = "ColorLaser._ipp",
+            .port = 631, .proto = MDNS::ServiceTCP, .name = "ColorLaser._ipp",
             .text = MDNSTXTRecord().build()
                 .add("txtvers", 1)
                 .add("rp", "printers/colorlaser")

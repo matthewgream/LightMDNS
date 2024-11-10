@@ -34,6 +34,12 @@
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
+//#define DEBUG_MDNS_UDP_READ
+//#define DEBUG_MDNS_UDP_WRITE
+
+// -----------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------
+
 #include <esp_mac.h>
 
 __attribute__((weak)) String getMacAddressBase(void) {
@@ -143,6 +149,7 @@ static constexpr uint8_t DNS_RECORD_MX = 0x0F;       // Mail exchange
 static constexpr uint8_t DNS_RECORD_TXT = 0x10;      // Text record
 static constexpr uint8_t DNS_RECORD_AAAA = 0x1C;     // IPv6 host address
 static constexpr uint8_t DNS_RECORD_SRV = 0x21;      // Service location
+static constexpr uint8_t DNS_RECORD_OPT = 0x29;      // EDNS options
 static constexpr uint8_t DNS_RECORD_NSEC = 0x2F;     // Next Secure record
 static constexpr uint8_t DNS_RECORD_ANY = 0xFF;      // Any type (query only)
 
@@ -181,8 +188,8 @@ static inline uint8_t _configureCacheFlush(const DNSRecordUniqueness uniqueness,
     if (isProbing) return DNS_CACHE_NO_FLUSH;
     return (uniqueness == DNSRecordUniqueness::Unique || uniqueness == DNSRecordUniqueness::Contextual) ? DNS_CACHE_FLUSH : DNS_CACHE_NO_FLUSH;
 }
-static inline uint32_t _configureTTL(const MDNS::TTLConfig& ttls, const uint32_t ttl, const bool isShared) {
-    return ttl == 0 ? 0 : (isShared ? std::min(ttl, ttls.shared_max) : ttl);
+static inline uint32_t _configureTTL(const DNSRecordUniqueness uniqueness, const MDNS::TTLConfig& ttls, const uint32_t ttl) {
+    return ttl == 0 ? 0 : (uniqueness == DNSRecordUniqueness::Shared ? std::min(ttl, ttls.shared_max) : ttl);
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -363,23 +370,23 @@ static void parsePacket(const char* label, const uint8_t* data, const size_t siz
 static const IPAddress MDNS_ADDR_MULTICAST(224, 0, 0, 251);
 static constexpr uint16_t MDNS_PORT = 5353;
 
+static constexpr uint8_t calcSupportedRecordTypeByte(uint8_t type) {
+    return (type - 1) / 8;
+}
+static constexpr uint8_t calcSupportedRecordTypeMask(uint8_t type) {
+    return 1 << (7 - ((type - 1) % 8));
+}
 static constexpr struct SupportedRecordType {
     uint8_t type;
     uint8_t byte;
     uint8_t mask;
 } SupportedRecordTypes[] = {
-    { DNS_RECORD_A, 0, 0x80 },      // Type 1  -> byte 0, bit 7, mask 0x80
-    { DNS_RECORD_PTR, 1, 0x10 },    // Type 12 -> byte 1, bit 4, mask 0x10
-    { DNS_RECORD_TXT, 1, 0x01 },    // Type 16 -> byte 1, bit 0, mask 0x01
-    { DNS_RECORD_SRV, 4, 0x80 },    // Type 33 -> byte 4, bit 7, mask 0x80
+    { DNS_RECORD_A, calcSupportedRecordTypeByte(DNS_RECORD_A), calcSupportedRecordTypeMask(DNS_RECORD_A) },
+    { DNS_RECORD_PTR, calcSupportedRecordTypeByte(DNS_RECORD_PTR), calcSupportedRecordTypeMask(DNS_RECORD_PTR) },
+    { DNS_RECORD_TXT, calcSupportedRecordTypeByte(DNS_RECORD_TXT), calcSupportedRecordTypeMask(DNS_RECORD_TXT) },
+    { DNS_RECORD_SRV, calcSupportedRecordTypeByte(DNS_RECORD_SRV), calcSupportedRecordTypeMask(DNS_RECORD_SRV) },
+    { DNS_RECORD_NSEC, calcSupportedRecordTypeByte(DNS_RECORD_NSEC), calcSupportedRecordTypeMask(DNS_RECORD_NSEC) }
 };
-static_assert([] {
-    for (const auto& rt : SupportedRecordTypes)
-        if (rt.byte != ((rt.type - 1) / 8) || rt.mask != (1 << (7 - ((rt.type - 1) % 8))))
-            return false;
-    return true;
-}(),
-              "SupportedRecordTypes bitmap calculations are incorrect");
 
 static constexpr const char* protocolPostfix(const MDNS::ServiceProtocol proto) {
     switch (proto) {
@@ -392,7 +399,6 @@ static constexpr const char* protocolPostfix(const MDNS::ServiceProtocol proto) 
     }
 };
 
-static constexpr bool OPT_SERVICE_SD = false;
 static constexpr bool OPT_DETAILED_CHECKS = true;
 static constexpr uint16_t OPT_DETAILED_CHECKS_REASONABLE_COUNT = 100;
 
@@ -434,35 +440,46 @@ struct DNSBitmap {
 // -----------------------------------------------------------------------------------------------
 
 class Base64 {
+private:
     static constexpr const char encodingTable[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static constexpr size_t BITS_PER_CHAR = 6;        // Base64 uses 6 bits per character
+    static constexpr size_t BITS_PER_BYTE = 8;        // Input uses 8 bits per byte
+    static constexpr size_t OUTPUT_GROUP_SIZE = 4;    // Output characters per group
+    static constexpr size_t INPUT_GROUP_SIZE = 3;     // Input bytes per group
+    static constexpr char PADDING_CHAR = '=';         // Character used for padding
+    static constexpr uint8_t MASK_6BITS = 0x3F;       // Mask for 6 bits (2^6 - 1)
+    static constexpr uint8_t MASK_4BITS = 0x0F;       // Mask for 4 bits (2^4 - 1)
+    static constexpr uint8_t MASK_2BITS = 0x03;       // Mask for 2 bits (2^2 - 1)
+    static constexpr uint8_t MASK_6BITS_NOT = 0xC0;
+    static constexpr uint8_t MASK_4BITS_NOT = 0xF0;
+
 public:
     static size_t length(const size_t inputLength) {
-        return 4 * ((inputLength + 2) / 3);
+        return OUTPUT_GROUP_SIZE * ((inputLength + INPUT_GROUP_SIZE - 1) / INPUT_GROUP_SIZE);
     }
     static size_t encode(const uint8_t* input, const size_t inputLength, char* output, const size_t outputLength) {
-        const size_t required_length = 4 * ((inputLength + 2) / 3);
-        if (outputLength < required_length)
+        if (outputLength < OUTPUT_GROUP_SIZE * ((inputLength + INPUT_GROUP_SIZE - 1) / INPUT_GROUP_SIZE))
             return 0;
-        size_t i, j = 0;
-        for (i = 0; i + 2 < inputLength; i += 3) {
-            output[j++] = encodingTable[(input[i] >> 2) & 0x3F];
-            output[j++] = encodingTable[((input[i] & 0x3) << 4) | ((input[i + 1] & 0xF0) >> 4)];
-            output[j++] = encodingTable[((input[i + 1] & 0xF) << 2) | ((input[i + 2] & 0xC0) >> 6)];
-            output[j++] = encodingTable[input[i + 2] & 0x3F];
+        size_t inputIndex, outputIndex = 0;
+        for (inputIndex = 0; inputIndex + INPUT_GROUP_SIZE - 1 < inputLength; inputIndex += INPUT_GROUP_SIZE) {
+            output[outputIndex++] = encodingTable[((input[inputIndex + 0] >> 2) & MASK_6BITS)];
+            output[outputIndex++] = encodingTable[((input[inputIndex + 0] & MASK_2BITS) << 4) | ((input[inputIndex + 1] & MASK_6BITS_NOT) >> 4)];
+            output[outputIndex++] = encodingTable[((input[inputIndex + 1] & MASK_4BITS) << 2) | ((input[inputIndex + 2] & MASK_6BITS_NOT) >> 6)];
+            output[outputIndex++] = encodingTable[((input[inputIndex + 2] & MASK_6BITS))];
         }
-        if (i < inputLength) {
-            output[j++] = encodingTable[(input[i] >> 2) & 0x3F];
-            if (i == (inputLength - 1)) {
-                output[j++] = encodingTable[((input[i] & 0x3) << 4)];
-                output[j++] = '=';
+        if (inputIndex < inputLength) {
+            output[outputIndex++] = encodingTable[(input[inputIndex] >> 2) & MASK_6BITS];
+            if (inputIndex == (inputLength - 1)) {
+                output[outputIndex++] = encodingTable[(input[inputIndex] & MASK_2BITS) << 4];
+                output[outputIndex++] = PADDING_CHAR;
             } else {
-                output[j++] = encodingTable[((input[i] & 0x3) << 4) | ((input[i + 1] & 0xF0) >> 4)];
-                output[j++] = encodingTable[((input[i + 1] & 0xF) << 2)];
+                output[outputIndex++] = encodingTable[((input[inputIndex + 0] & MASK_2BITS) << 4) | ((input[inputIndex + 1] & MASK_6BITS_NOT) >> 4)];
+                output[outputIndex++] = encodingTable[((input[inputIndex + 1] & MASK_4BITS) << 2)];
             }
-            output[j++] = '=';
+            output[outputIndex++] = PADDING_CHAR;
         }
-        output[j++] = 0;
-        return j;
+        output[outputIndex] = '\0';
+        return outputIndex;
     }
 };
 
@@ -492,12 +509,10 @@ bool MDNSTXTRecord::insert(const String& key, const void* value, const size_t le
 }
 uint16_t MDNSTXTRecord::length() const {
     if (!length_valid) {
-        cached_length = 0;
-        for (const auto& entry : _entries) {
-            cached_length += 1;    // Length byte
+        cached_length = std::accumulate(_entries.begin(), _entries.end(), 0U, [](size_t sum, const Entry& entry) {
             const size_t value_len = entry.value.empty() ? 0 : (entry.binary ? Base64::length(entry.value.size()) : entry.value.size());
-            cached_length += entry.key.length() + (value_len ? value_len + 1 : 0);
-        }
+            return sum + 1 + entry.key.length() + (value_len ? value_len + 1 : 0);    // length byte
+        });
         length_valid = true;
     }
     return cached_length;
@@ -524,13 +539,12 @@ String MDNSTXTRecord::toString() const {
 // -----------------------------------------------------------------------------------------------
 
 static inline size_t _sizeofDNSName(const String& name);
-static inline size_t _sizeofServiceRecord(const MDNS::Service& service, const String& fqhn, const bool includeAdditional = false);
-static inline size_t _sizeofCompleteRecord(const MDNS::Services& services, const String& fqhn);
+static inline size_t _sizeofServiceRecord(const MDNS::Service& service, const String& fqhn);
+static inline size_t _sizeofCompleteRecord(const MDNS::Services& services, const MDNS::ServiceTypes& serviceTypes, const String& fqhn);
 
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-//#define DEBUG_MDNS_UDP_READ
 #ifdef DEBUG_MDNS_UDP_READ
 static const size_t udp_read_buffer_maximum__global = DNS_PACKET_LENGTH_MAX;
 static size_t _udp_read_buffer_length__global = 0;
@@ -731,7 +745,7 @@ struct UDP_READ_PACKET_CLASS {
                     UDP_SKIP_BYTE_OR_FAIL(return false);
             }
 
-            if (section != DNSSection::Query && name.isEmpty())
+            if (section != DNSSection::Query && type != DNS_RECORD_OPT && name.isEmpty())
                 DEBUG_PRINTF("\n**** EMPTY ****\n");
 
             _handler.process_end(section, UDP_READ_OFFSET());
@@ -802,7 +816,6 @@ struct NameCollector {
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-#define DEBUG_MDNS_UDP_WRITE
 #ifdef DEBUG_MDNS_UDP_WRITE
 static const size_t _udp_write_buffer_maximum__global = DNS_PACKET_LENGTH_MAX;
 static size_t _udp_write_buffer_length__global = 0;
@@ -823,9 +836,11 @@ static uint8_t _udp_write_buffer_content__global[_udp_write_buffer_maximum__glob
 #define DEBUG_MDNS_UDP_WRITE_DATA(x, y)
 #endif
 
+static uint16_t _udp_write_offset__global = 0;
 #define UDP_WRITE_BEGIN() \
     do { \
         _udp->beginPacket(MDNS_ADDR_MULTICAST, MDNS_PORT); \
+        _udp_write_offset__global = 0; \
         DEBUG_MDNS_UDP_WRITE_RESET(); \
     } while (0)
 #define UDP_WRITE_END() \
@@ -836,19 +851,22 @@ static uint8_t _udp_write_buffer_content__global[_udp_write_buffer_maximum__glob
 #define UDP_WRITE_BYTE(x) \
     do { \
         _udp->write(x); \
-        DEBUG_MDNS_UDP_WRITE_BYTE(x); \
+        _udp_write_offset__global++; \
+        DEBUG_MDNS_UDP_WRITE_BYTE((x)); \
     } while (0)
 #define UDP_WRITE_DATA(x, y) \
     do { \
         _udp->write(x, y); \
-        DEBUG_MDNS_UDP_WRITE_DATA(x, y); \
+        _udp_write_offset__global += (y); \
+        DEBUG_MDNS_UDP_WRITE_DATA((x), (y)); \
     } while (0)
+#define UDP_WRITE_OFFSET() _udp_write_offset__global
 
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
 MDNS::MDNS(UDP& udp)
-    : _udp(&udp), _enabled(false), _announced(0) {
+    : _udp(&udp) {
 }
 MDNS::~MDNS() {
     stop();
@@ -956,11 +974,12 @@ MDNS::Status MDNS::serviceRecordInsert(const ServiceProtocol proto, const uint16
 
     Service serviceNew{ .port = port, .proto = proto, .name = name, .config = ServiceConfig(), .text = text, .serv = name.substring(name.lastIndexOf('.') + 1) + protocolPostfix(proto), .fqsn = name + protocolPostfix(proto) };
 
-    if ((_sizeofCompleteRecord(_services, _fqhn) + _sizeofServiceRecord(serviceNew, _fqhn)) > DNS_PACKET_LENGTH_SAFE)    // could solve with truncation support
+    if ((sizeof(Header) + _sizeofCompleteRecord(_services, _serviceTypes, _fqhn) + _sizeofServiceRecord(serviceNew, _fqhn)) > DNS_PACKET_LENGTH_SAFE)    // could solve with truncation support
         return OutOfMemory;
 
     try {
         const auto& service = _services.emplace_back(serviceNew);
+        _serviceTypes.insert(service.serv);
         if (_enabled)
             _messageSend(XID_DEFAULT, PacketTypeServiceRecord, &service);
         return Success;
@@ -973,9 +992,12 @@ MDNS::Status MDNS::serviceRecordRemove(const ServiceProtocol proto, const uint16
 
     DEBUG_PRINTF("MDNS: serviceRecordRemove: proto=%s, port=%u, name=%s\n", toString(proto).c_str(), port, name.c_str());
 
+    _serviceTypes.clear();
     std::erase_if(_services, [&](const Service& service) {
-        if (!(service.port == port && service.proto == proto && (name.isEmpty() || service.name == name)))
+        if (!(service.port == port && service.proto == proto && (name.isEmpty() || service.name == name))) {
+            _serviceTypes.insert(service.serv);
             return false;
+        }
         if (_enabled)
             _messageSend(XID_DEFAULT, PacketTypeServiceRelease, &service);
         return true;
@@ -992,6 +1014,7 @@ MDNS::Status MDNS::serviceRecordClear() {
         for (const auto& service : _services)
             _messageSend(XID_DEFAULT, PacketTypeServiceRelease, &service);
     _services.clear();
+    _serviceTypes.clear();
 
     return Success;
 }
@@ -1287,11 +1310,12 @@ bad_packet_failed_checks:
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-static constexpr uint16_t DNS_COUNT_SINGLE = 1;                             // Used for single record responses
-static constexpr uint16_t DNS_COUNT_SERVICE = 4;                            // Used for service announcements (SRV+TXT+2×PTR)
-static constexpr uint16_t DNS_COUNT_A_RECORD = 1;                           // A record
-static constexpr uint16_t DNS_COUNT_PER_SERVICE = 3;                        // SRV + TXT + PTR per service
-static constexpr uint16_t DNS_COUNT_DNS_SD_PTR = OPT_SERVICE_SD ? 1 : 0;    // DNS-SD PTR record
+static constexpr uint16_t DNS_COUNT_SINGLE = 1;         // Used for single record responses
+static constexpr uint16_t DNS_COUNT_SERVICE = 4;        // Used for service announcements (SRV+TXT+2×PTR)
+static constexpr uint16_t DNS_COUNT_A_RECORD = 1;       // A record
+static constexpr uint16_t DNS_COUNT_PER_SERVICE = 3;    // SRV + TXT + PTR per service
+static constexpr uint16_t DNS_COUNT_DNS_SD_PTR = 1;     // DNS-SD PTR record
+static constexpr uint16_t DNS_COUNT_NSEC_RECORD = 1;
 
 MDNS::Status MDNS::_messageSend(const uint16_t xid, const int type, const Service* service) {
 
@@ -1305,32 +1329,32 @@ MDNS::Status MDNS::_messageSend(const uint16_t xid, const int type, const Servic
             header.queryResponse = DNS_QR_RESPONSE;
             header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
             header.answerCount = htons(DNS_COUNT_A_RECORD);
-            header.additionalCount = htons(type == PacketTypeReverseRecord ? DNS_COUNT_A_RECORD : 0);    // A record as additional
+            header.additionalCount = htons(type != PacketTypeReverseRecord ? 0 : DNS_COUNT_A_RECORD);    // A record as additional
             break;
         case PacketTypeServiceRecord:
         case PacketTypeServiceRelease:
             header.queryResponse = DNS_QR_RESPONSE;
             header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
             header.answerCount = htons(DNS_COUNT_PER_SERVICE);
-            header.additionalCount = htons(type == PacketTypeServiceRecord ? (DNS_COUNT_DNS_SD_PTR + DNS_COUNT_A_RECORD) : 0);    // DNS-SD + A record as additional
+            header.additionalCount = htons(DNS_COUNT_DNS_SD_PTR + DNS_COUNT_A_RECORD);    // DNS-SD + A record as additional
             break;
         case PacketTypeCompleteRecord:
         case PacketTypeCompleteRelease:
             header.queryResponse = DNS_QR_RESPONSE;
             header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
-            header.answerCount = htons(DNS_COUNT_A_RECORD + (_services.empty() ? 0 : (DNS_COUNT_DNS_SD_PTR + (_services.size() * DNS_COUNT_PER_SERVICE))));
+            header.answerCount = htons(DNS_COUNT_A_RECORD + (_services.empty() ? 0 : (_services.size() * DNS_COUNT_PER_SERVICE + _serviceTypes.size() * DNS_COUNT_DNS_SD_PTR)));
             break;
         case PacketTypeProbe:
             header.queryResponse = DNS_QR_QUERY;
             header.authoritiveAnswer = DNS_AA_NON_AUTHORITATIVE;
             header.queryCount = htons(DNS_COUNT_SINGLE);
-            header.authorityCount = htons(DNS_COUNT_A_RECORD + (_services.empty() ? 0 : (DNS_COUNT_DNS_SD_PTR + (_services.size() * DNS_COUNT_PER_SERVICE))));
+            header.authorityCount = htons(DNS_COUNT_A_RECORD + (_services.empty() ? 0 : (_services.size() * DNS_COUNT_PER_SERVICE + _serviceTypes.size() * DNS_COUNT_DNS_SD_PTR)));
             break;
         case PacketTypeNextSecure:
             header.queryResponse = DNS_QR_RESPONSE;
             header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
-            header.answerCount = htons(DNS_COUNT_A_RECORD);
-            header.additionalCount = htons(!service ? DNS_COUNT_A_RECORD : 0);    // A record as additional
+            header.answerCount = htons(DNS_COUNT_NSEC_RECORD);
+            header.additionalCount = htons(service ? 0 : DNS_COUNT_A_RECORD);    // A record as additional
             break;
     }
 
@@ -1355,20 +1379,20 @@ MDNS::Status MDNS::_messageSend(const uint16_t xid, const int type, const Servic
         case PacketTypeServiceRecord:
             assert(service != nullptr);
             DEBUG_PRINTF("MDNS: packet: sending Service record %s/%u/%s/%s/[%d]\n", toString(service->proto).c_str(), service->port, service->name.c_str(), service->serv.c_str(), service->text.size());
-            _writeServiceRecord(*service, _ttls.announce, true);    // include additional
+            _writeServiceRecord(*service, _ttls.announce);
             break;
         case PacketTypeServiceRelease:
             assert(service != nullptr);
             DEBUG_PRINTF("MDNS: packet: sending Service release %s/%u/%s/%s/[%d]\n", toString(service->proto).c_str(), service->port, service->name.c_str(), service->serv.c_str(), service->text.size());
-            _writeServiceRecord(*service, _ttls.goodbye, true);
+            _writeServiceRecord(*service, _ttls.goodbye);
             break;
 
         case PacketTypeCompleteRecord:
-            DEBUG_PRINTF("MDNS: packet: sending Complete record, ip=%s, name=%s\n", IPAddress(_addr).toString().c_str(), _fqhn.c_str());
+            DEBUG_PRINTF("MDNS: packet: sending Complete record, ip=%s, name=%s, arpa=%s, services=%d, serviceTypes=%d\n", IPAddress(_addr).toString().c_str(), _fqhn.c_str(), _arpa.c_str(), _services.size(), _serviceTypes.size());
             _writeCompleteRecord(_ttls.announce);
             break;
         case PacketTypeCompleteRelease:
-            DEBUG_PRINTF("MDNS: packet: sending Complete release, ip=%s, name=%s\n", IPAddress(_addr).toString().c_str(), _fqhn.c_str());
+            DEBUG_PRINTF("MDNS: packet: sending Complete release, ip=%s, name=%s, arpa=%s, services=%d, serviceTypes=%d\n", IPAddress(_addr).toString().c_str(), _fqhn.c_str(), _arpa.c_str(), _services.size(), _serviceTypes.size());
             _writeCompleteRecord(_ttls.goodbye);
             break;
 
@@ -1425,28 +1449,29 @@ static inline void _writeStringLengthAndContent(UDP* _udp, const String& str, co
     UDP_WRITE_DATA(reinterpret_cast<const uint8_t*>(str.c_str()), size);
 }
 
+// XXX compression
 static inline void _writeDNSName(UDP* _udp, const String& name) {
-    const size_t len = name.length();
+    const size_t len = std::min(name.length(), DNS_LABEL_LENGTH_MAX);
     if (!len)
         UDP_WRITE_BYTE(static_cast<uint8_t>(0));
     else {
         uint8_t buffer[len + 2];    // stack usage up to ~64 bytes
-        size_t write_pos = 1, length_pos = 0;
-        for (size_t i = 0; i < len && i < DNS_LABEL_LENGTH_MAX; i++) {
-            const char c = name[i];
-            if (c == '.') {
+        uint16_t write_pos = 1, length_pos = 0;
+        for (size_t i = 0; i < len; i++) {
+            if (name[i] == '.') {
                 buffer[length_pos] = static_cast<uint8_t>(write_pos - (length_pos + 1));
-                length_pos = write_pos++;
-            } else {
-                buffer[write_pos++] = c;
-                if (i == len - 1 || len == DNS_LABEL_LENGTH_MAX - 1) {
-                    buffer[length_pos] = static_cast<uint8_t>(write_pos - (length_pos + 1));
-                    length_pos = write_pos;
-                }
-            }
+                length_pos = write_pos;
+            } else
+                buffer[write_pos] = name[i];
+            write_pos++;
         }
-        buffer[write_pos++] = 0;    // null terminator
-        UDP_WRITE_DATA(buffer, write_pos);
+        if ((write_pos - (length_pos + 1)) > 0) {
+            buffer[length_pos] = static_cast<uint8_t>(write_pos - (length_pos + 1));
+            length_pos = write_pos;
+            write_pos++;
+        }
+        buffer[--write_pos] = 0;    // null terminator
+        UDP_WRITE_DATA(buffer, write_pos + 1);
     }
 }
 static size_t _sizeofDNSName(const String& name) {
@@ -1503,38 +1528,38 @@ static inline void _writeSRVDetails(UDP* _udp, const uint16_t priority, const ui
 
 // -----------------------------------------------------------------------------------------------
 
-static inline void _writePTRRecord(UDP* _udp, const String& subject, const String& target, const uint32_t ttl) {
-    _writeDNSName(_udp, subject);
-    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_PTR, _configureCacheFlush(DNSRecordUniqueness::Shared), DNS_CLASS_IN, ttl);
+static inline void _writePTRRecord(UDP* _udp, const String& name, const String& target, const uint8_t cacheFlush, const uint32_t ttl) {
+    _writeDNSName(_udp, name);
+    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_PTR, cacheFlush, DNS_CLASS_IN, ttl);
     _writeNameLengthAndContent(_udp, target);
 }
-static inline void _writeARecord(UDP* _udp, const String& name, const IPAddress& addr, const uint32_t ttl, const bool isProbing = false) {
+static inline void _writeARecord(UDP* _udp, const String& name, const IPAddress& addr, const uint8_t cacheFlush, const uint32_t ttl) {
     _writeDNSName(_udp, name);
-    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_A, _configureCacheFlush(DNSRecordUniqueness::Unique, isProbing), DNS_CLASS_IN, ttl);
+    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_A, cacheFlush, DNS_CLASS_IN, ttl);
     _writeAddressLengthAndContent(_udp, addr);
 }
 static inline void _writeANYRecord(UDP* _udp, const String& name, const IPAddress& addr) {
     _writeDNSName(_udp, name);
-    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_ANY, DNS_CACHE_NO_FLUSH, DNS_CLASS_IN, 0);    // Always NO FLUSH and 0 for probe queries
+    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_ANY, DNS_CACHE_NO_FLUSH, DNS_CLASS_IN, 0);    // Always CACHE_NO_FLUSH and TTL=0 for probe queries
     _writeAddressLengthAndContent(_udp, addr);
 }
-static inline void _writeNSECRecord(UDP* _udp, const String& name, const DNSBitmap& bitmap, const uint32_t ttl) {
+static inline void _writeNSECRecord(UDP* _udp, const String& name, const DNSBitmap& bitmap, const uint8_t cacheFlush, const uint32_t ttl) {
     _writeDNSName(_udp, name);
-    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_NSEC, _configureCacheFlush(DNSRecordUniqueness::Unique), DNS_CLASS_IN, ttl);
+    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_NSEC, cacheFlush, DNS_CLASS_IN, ttl);
     _writeLength(_udp, _sizeofDNSName(name) + bitmap.size());
     _writeDNSName(_udp, name);
     _write(_udp, bitmap);
 }
-static inline void _writeSRVRecord(UDP* _udp, const String& name, const String& fqhn, const uint16_t port, const MDNS::ServiceConfig& config, const uint32_t ttl, const bool isProbing = false) {
+static inline void _writeSRVRecord(UDP* _udp, const String& name, const String& fqhn, const uint16_t port, const MDNS::ServiceConfig& config, const uint8_t cacheFlush, const uint32_t ttl) {
     _writeDNSName(_udp, name);
-    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_SRV, _configureCacheFlush(DNSRecordUniqueness::Unique, isProbing), DNS_CLASS_IN, ttl);
+    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_SRV, cacheFlush, DNS_CLASS_IN, ttl);
     _writeLength(_udp, 2 + 2 + 2 + _sizeofDNSName(fqhn));
     _writeSRVDetails(_udp, config.priority, config.weight, port);
     _writeDNSName(_udp, fqhn);
 }
-static inline void _writeTXTRecord(UDP* _udp, const String& name, const MDNSTXTRecord& text, const uint32_t ttl, const bool isProbing = false) {
+static inline void _writeTXTRecord(UDP* _udp, const String& name, const MDNSTXTRecord& text, const uint8_t cacheFlush, const uint32_t ttl) {
     _writeDNSName(_udp, name);
-    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_TXT, _configureCacheFlush(DNSRecordUniqueness::Contextual, isProbing), DNS_CLASS_IN, ttl);
+    _writeBits(_udp, DNS_RECORD_HI, DNS_RECORD_TXT, cacheFlush, DNS_CLASS_IN, ttl);
     _write(_udp, text);
 }
 
@@ -1544,7 +1569,7 @@ static inline void _writeTXTRecord(UDP* _udp, const String& name, const MDNSTXTR
 void MDNS::_writeAddressRecord(const uint32_t ttl) const {
 
     // 1. A record for Hostname -> IP Address
-    _writeARecord(_udp, _fqhn, _addr, _configureTTL(_ttls, ttl, false));
+    _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -1552,50 +1577,39 @@ void MDNS::_writeAddressRecord(const uint32_t ttl) const {
 void MDNS::_writeReverseRecord(const uint32_t ttl) const {
 
     // 1. PTR record for Reverse IP Address -> Hostname
-    _writePTRRecord(_udp, _arpa, _fqhn, _configureTTL(_ttls, ttl, true));
-
+    _writePTRRecord(_udp, _arpa, _fqhn, _configureCacheFlush(DNSRecordUniqueness::Shared), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
     // 2. A record for Hostname -> IP Address
-    _writeARecord(_udp, _fqhn, _addr, _configureTTL(_ttls, ttl, false));
+    _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
 }
 
 // -----------------------------------------------------------------------------------------------
 
-void MDNS::_writeServiceRecord(const Service& service, const uint32_t ttl, const bool includeAdditional, const bool isProbing) const {
+void MDNS::_writeServiceRecord(const Service& service, const uint32_t ttl) const {
 
     // 1. SRV record for Service -> Hostname
-    _writeSRVRecord(_udp, service.fqsn, _fqhn, service.port, service.config, _configureTTL(_ttls, ttl, false), isProbing);
-
+    _writeSRVRecord(_udp, service.fqsn, _fqhn, service.port, service.config, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
     // 2. TXT record for Service (no target)
-    _writeTXTRecord(_udp, service.fqsn, service.text, _configureTTL(_ttls, ttl, false), isProbing);
-
+    _writeTXTRecord(_udp, service.fqsn, service.text, _configureCacheFlush(DNSRecordUniqueness::Contextual), _configureTTL(DNSRecordUniqueness::Contextual, _ttls, ttl));
     // 3. PTR record for Service Type -> Service
-    _writePTRRecord(_udp, service.serv, service.fqsn, _configureTTL(_ttls, ttl, true));
+    _writePTRRecord(_udp, service.serv, service.fqsn, _configureCacheFlush(DNSRecordUniqueness::Shared), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+    // // x. PTR records for Sub Service Types
+    // for (const auto& subtype : service.config.subtypes)
+    //     _writePTRRecord(_udp, subtype + "._sub." + service.serv, service.fqsn, _configureCacheFlush(DNSRecordUniqueness::Shared, isProbing), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
 
-    // 4. PTR records for Sub Service Types
-    for (const auto& subtype : service.config.subtypes)
-        _writePTRRecord(_udp, subtype + "._sub." + service.serv, service.fqsn, _configureTTL(_ttls, ttl, true));
-
-    if (includeAdditional) {
-
-        // 5. PTR record for DNS-SD => Hostname
-        if (OPT_SERVICE_SD) _writePTRRecord(_udp, SERVICE_SD_FQSN, _fqhn, _configureTTL(_ttls, ttl, true));
-
-        // 6. A record for Hostname -> IP Address
-        _writeARecord(_udp, _fqhn, _addr, _configureTTL(_ttls, ttl, false), isProbing);
-    }
+    // 4. PTR record for DNS-SD => Service Type
+    _writePTRRecord(_udp, SERVICE_SD_FQSN, service.serv, _configureCacheFlush(DNSRecordUniqueness::Shared), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+    // 5. A record for Hostname -> IP Address
+    _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
 }
-static size_t _sizeofServiceRecord(const MDNS::Service& service, const String& fqhn, const bool includeAdditional) {
-    size_t size = sizeof(Header);
+
+static size_t _sizeofServiceRecord(const MDNS::Service& service, const String& fqhn) {
+    size_t size = 0;
     size += _sizeofDNSName(service.fqsn) + DNS_RECORD_HEADER_SIZE + DNS_SRV_DETAILS_SIZE + _sizeofDNSName(fqhn);    // SRV
     size += _sizeofDNSName(service.fqsn) + DNS_RECORD_HEADER_SIZE + service.text.length();                          // TXT
     size += _sizeofDNSName(service.serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service.fqsn);                   // PTR SRV
-    size += service.config.subtypes.empty() ? 0 : std::accumulate(service.config.subtypes.begin(), service.config.subtypes.end(), static_cast<size_t>(0), [&](const size_t size, const auto& subtype) {
-        return size + _sizeofDNSName(subtype + "._sub." + service.serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service.fqsn);
-    });
-    if (includeAdditional) {
-        if (OPT_SERVICE_SD) size += _sizeofDNSName(SERVICE_SD_FQSN) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(fqhn);    // PTR SD
-        size += _sizeofDNSName(fqhn) + DNS_RECORD_HEADER_SIZE + 4;                                                      // PTR IP
-    }
+    // size += service.config.subtypes.empty() ? 0 : std::accumulate(service.config.subtypes.begin(), service.config.subtypes.end(), static_cast<size_t>(0), [&](size_t size, const auto& subtype) {
+    //     return size + _sizeofDNSName(subtype + "._sub." + service.serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service.fqsn);
+    // });
     return size;
 }
 
@@ -1604,24 +1618,35 @@ static size_t _sizeofServiceRecord(const MDNS::Service& service, const String& f
 void MDNS::_writeCompleteRecord(const uint32_t ttl) const {
 
     // 1. A record for Hostname -> IP Address
-    _writeARecord(_udp, _fqhn, _addr, _configureTTL(_ttls, ttl, false));
+    _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
 
     if (!_services.empty()) {
-
-        // 2. PTR record for DNS-SD => Hostname
-        if (OPT_SERVICE_SD) _writePTRRecord(_udp, SERVICE_SD_FQSN, _fqhn, _configureTTL(_ttls, ttl, false));
-
         // 3-N service records
-        for (const auto& service : _services)
-            _writeServiceRecord(service, _configureTTL(_ttls, ttl, false));
+        for (const auto& service : _services) {
+            // 1. SRV record for Service -> Hostname
+            _writeSRVRecord(_udp, service.fqsn, _fqhn, service.port, service.config, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+            // 2. TXT record for Service (no target)
+            _writeTXTRecord(_udp, service.fqsn, service.text, _configureCacheFlush(DNSRecordUniqueness::Contextual), _configureTTL(DNSRecordUniqueness::Contextual, _ttls, ttl));
+            // 3. PTR record for Service Type -> Service
+            _writePTRRecord(_udp, service.serv, service.fqsn, _configureCacheFlush(DNSRecordUniqueness::Shared), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+        }
+
+        // N-O PTR records for DNS-SD => Service Type
+        for (const auto& serviceType : _serviceTypes)
+            _writePTRRecord(_udp, SERVICE_SD_FQSN, serviceType, _configureCacheFlush(DNSRecordUniqueness::Shared), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
     }
 }
-static size_t _sizeofCompleteRecord(const MDNS::Services& services, const String& fqhn) {
-    size_t size = sizeof(Header);
-    size += _sizeofDNSName(fqhn) + DNS_RECORD_HEADER_SIZE + 4;                                                      // PTR IP
-    if (OPT_SERVICE_SD) size += _sizeofDNSName(SERVICE_SD_FQSN) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(fqhn);    // PTR SD
-    size += services.empty() ? 0 : std::accumulate(services.begin(), services.end(), static_cast<size_t>(0), [&](const size_t size, const MDNS::Service& service) {
-        return size + _sizeofServiceRecord(service, fqhn);
+static size_t _sizeofCompleteRecord(const MDNS::Services& services, const MDNS::ServiceTypes& serviceTypes, const String& fqhn) {
+    size_t size = 0;
+    size += _sizeofDNSName(fqhn) + DNS_RECORD_HEADER_SIZE + 4;    // PTR IP
+    size += services.empty() ? 0 : std::accumulate(services.begin(), services.end(), static_cast<size_t>(0), [&](size_t size, const MDNS::Service& service) {
+        size += _sizeofDNSName(service.fqsn) + DNS_RECORD_HEADER_SIZE + DNS_SRV_DETAILS_SIZE + _sizeofDNSName(fqhn);    // SRV
+        size += _sizeofDNSName(service.fqsn) + DNS_RECORD_HEADER_SIZE + service.text.length();                          // TXT
+        size += _sizeofDNSName(service.serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service.fqsn);                   // PTR SRV
+        return size;
+    });
+    size += serviceTypes.empty() ? 0 : std::accumulate(serviceTypes.begin(), serviceTypes.end(), static_cast<size_t>(0), [&](size_t size, const String& serviceType) {
+        return size + _sizeofDNSName(SERVICE_SD_FQSN) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(serviceType);    // PTR SD
     });
     return size;
 }
@@ -1629,34 +1654,40 @@ static size_t _sizeofCompleteRecord(const MDNS::Services& services, const String
 // -----------------------------------------------------------------------------------------------
 
 void MDNS::_writeProbeRecord(const uint32_t ttl) const {
+    static constexpr bool isProbing = true;
 
-    // 1. A/ANY record for Hostname -> IP Address
+    // 1. ANY record for Hostname -> IP Address
     _writeANYRecord(_udp, _fqhn, _addr);
+    // 2. A record for Hostname -> IP Address
+    _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique, isProbing), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
 
     if (!_services.empty()) {
-
-        // 2. PTR record for DNS-SD => Hostname
-        _writePTRRecord(_udp, SERVICE_SD_FQSN, _fqhn, _configureTTL(_ttls, ttl, true));
-
         // 3-N service records
-        for (const auto& service : _services)
-            _writeServiceRecord(service, ttl, true);
+        for (const auto& service : _services) {
+            // 1. SRV record for Service -> Hostname
+            _writeSRVRecord(_udp, service.fqsn, _fqhn, service.port, service.config, _configureCacheFlush(DNSRecordUniqueness::Unique, isProbing), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+            // 2. TXT record for Service (no target)
+            _writeTXTRecord(_udp, service.fqsn, service.text, _configureCacheFlush(DNSRecordUniqueness::Contextual, isProbing), _configureTTL(DNSRecordUniqueness::Contextual, _ttls, ttl));
+            // 3. PTR record for Service Type -> Service
+            _writePTRRecord(_udp, service.serv, service.fqsn, _configureCacheFlush(DNSRecordUniqueness::Shared, isProbing), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+        }
+
+        // N-O PTR records for DNS-SD => Service Type
+        for (const auto& serviceType : _serviceTypes)
+            _writePTRRecord(_udp, SERVICE_SD_FQSN, serviceType, _configureCacheFlush(DNSRecordUniqueness::Shared, isProbing), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
     }
 }
 
 // -----------------------------------------------------------------------------------------------
 
 void MDNS::_writeNextSecureRecord(const String& name, const std::initializer_list<uint8_t>& types, const uint32_t ttl, const bool includeAdditional) const {
-
     DNSBitmap bitmap(types);
-
     // 1. NSEC record with Service bitmap
-    _writeNSECRecord(_udp, name, bitmap, _configureTTL(_ttls, ttl, false));
+    _writeNSECRecord(_udp, name, bitmap, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
 
     if (includeAdditional) {
-
         // 2. A record for Hostname -> IP Address
-        _writeARecord(_udp, _fqhn, _addr, _configureTTL(_ttls, ttl, false));
+        _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
     }
 }
 
