@@ -335,7 +335,7 @@ static String parseControl(const uint8_t ctrl[4]) {
     return parseDNSType(type) + "/" + parseDNSFlags(ctrl[2]) + "/" + parseDNSClassOrEDNS(ctrl[2], ctrl[3], type);    // Pass both bytes
 }
 
-static void parsePacket(const char* label, const uint8_t* data, const size_t size, const size_t offs = 0) {
+__attribute__((unused)) static void parsePacket(const char* label, const uint8_t* data, const size_t size, const size_t offs = 0) {
     static constexpr const char lookup[] = "0123456789ABCDEF";
     char buffer[(16 * 3 + 2) + 1 + (16 * 1 + 2) + 1];
 
@@ -1416,11 +1416,11 @@ MDNS::Status MDNS::_messageSend(const uint16_t xid, const int type, const Servic
 // -----------------------------------------------------------------------------------------------
 
 static inline void _encodeUint16(uint8_t* ptr, const uint16_t val) {
-    *((uint16_t*)ptr) = htons(val);
+    *(reinterpret_cast <uint16_t*>(ptr)) = htons(val);
 }
 
 static inline void _encodeUint32(uint8_t* ptr, const uint32_t val) {
-    *((uint32_t*)ptr) = htonl(val);
+    *(reinterpret_cast <uint32_t*>(ptr)) = htonl(val);
 }
 
 static inline void _writeBits(UDP* _udp, const uint8_t byte1, const uint8_t byte2, const uint8_t byte3, const uint8_t byte4, const uint32_t ttl) {
