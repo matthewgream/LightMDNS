@@ -152,7 +152,6 @@ public:
     using Service = MDNSService;
     using Services = std::vector<Service>;
     using ServiceTypes = std::set<String>;
-    using ServiceBuilder = Service::Builder;
 
 private:
     UDP* _udp;
@@ -183,6 +182,8 @@ private:
 
     Status serviceRecordInsert(const Service::Protocol proto, const uint16_t port, const String& name, const Service::Config& config = Service::Config(), const Service::TXT& text = Service::TXT());    // deprecated
     Status serviceRecordRemove(const Service::Protocol proto, const uint16_t port, const String& name);                                                                                                  // deprecated
+    Status serviceRecordRemove(const String& name);                                                                                                                                                      // deprecated
+    Status serviceRecordClear(void);                                                                                                                                                                     // deprecated
 
 public:
     explicit MDNS(UDP& udp);
@@ -193,13 +194,18 @@ public:
     Status process(void);
     Status stop(void);
 
-    inline Status serviceRecordInsert(const Service& service) {
+    inline Status serviceInsert(const Service& service) {
         return serviceRecordInsert(service.proto, service.port, service.name, service.config, service.text);
     }
-    inline Status serviceRecordRemove(const Service& service) {
+    inline Status serviceRemove(const Service& service) {
         return serviceRecordRemove(service.proto, service.port, service.name);
     }
-    Status serviceRecordClear(void);
+    inline Status serviceRemove(const String& name) {
+        return name.isEmpty () ? Status::InvalidArgument : serviceRecordRemove(name);
+    }
+    inline Status serviceClear(void) {
+        return serviceRecordClear();
+    }
 };
 
 // -----------------------------------------------------------------------------------------------

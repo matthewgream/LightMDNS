@@ -994,6 +994,7 @@ MDNS::Status MDNS::serviceRecordRemove(const Service::Protocol proto, const uint
 
     DEBUG_PRINTF("MDNS: serviceRecordRemove: proto=%s, port=%u, name=%s\n", Service::toString(proto).c_str(), port, name.c_str());
 
+    size_t count = 0;
     _serviceTypes.clear();
     std::erase_if(_services, [&](const Service& service) {
         if (!(service.port == port && service.proto == proto && (name.isEmpty() || service.name == name))) {
@@ -1002,10 +1003,31 @@ MDNS::Status MDNS::serviceRecordRemove(const Service::Protocol proto, const uint
         }
         if (_enabled)
             _messageSend(XID_DEFAULT, PacketTypeServiceRelease, &service);
+        count++;
         return true;
     });
 
-    return Status::Success;
+    return count == 0 ? Status::InvalidArgument : Status::Success;
+}
+
+MDNS::Status MDNS::serviceRecordRemove(const String& name) {
+
+    DEBUG_PRINTF("MDNS: serviceRecordRemove: name=%s\n", name.c_str());
+
+    size_t count = 0;
+    _serviceTypes.clear();
+    std::erase_if(_services, [&](const Service& service) {
+        if (service.name != name) {
+            _serviceTypes.insert(service._serv);
+            return false;
+        }
+        if (_enabled)
+            _messageSend(XID_DEFAULT, PacketTypeServiceRelease, &service);
+        count++;
+        return true;
+    });
+
+    return count == 0 ? Status::InvalidArgument : Status::Success;
 }
 
 MDNS::Status MDNS::serviceRecordClear() {
@@ -1232,7 +1254,7 @@ MDNS::Status MDNS::_messageRecv() {
                 recordsMatcherTop[j].name = SERVICE_SD__fqsn, recordsMatcherTop[j].length = strlen(SERVICE_SD__fqsn), j++;
                 for (const auto& r : _mdns._services)    // XXX should only include unique r._serv ...
                     recordsMatcherTop[j].name = r._serv.c_str(), recordsMatcherTop[j].length = r._serv.length(), j++;
-                //
+                    //
 #ifdef DEBUG_MDNS
                 for (const auto& m : recordsMatcherTop)
                     DEBUG_PRINTF("MDNS: packet: processing, matching[]: <%s>: %d/%d/%d\n", m.name, m.match, m.length, m.position);
@@ -1421,11 +1443,11 @@ MDNS::Status MDNS::_messageSend(const uint16_t xid, const int type, const Servic
 // -----------------------------------------------------------------------------------------------
 
 static inline void _encodeUint16(uint8_t* ptr, const uint16_t val) {
-    *(reinterpret_cast <uint16_t*>(ptr)) = htons(val);
+    *(reinterpret_cast<uint16_t*>(ptr)) = htons(val);
 }
 
 static inline void _encodeUint32(uint8_t* ptr, const uint32_t val) {
-    *(reinterpret_cast <uint32_t*>(ptr)) = htonl(val);
+    *(reinterpret_cast<uint32_t*>(ptr)) = htonl(val);
 }
 
 //
@@ -1612,7 +1634,7 @@ static size_t _sizeofServiceRecord(const MDNS::Service& service, const String& f
     size_t size = 0;
     size += _sizeofDNSName(service._fqsn) + DNS_RECORD_HEADER_SIZE + DNS_SRV_DETAILS_SIZE + _sizeofDNSName(fqhn);    // SRV
     size += _sizeofDNSName(service._fqsn) + DNS_RECORD_HEADER_SIZE + service.text.length();                          // TXT
-    size += _sizeofDNSName(service._serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service._fqsn);                   // PTR SRV
+    size += _sizeofDNSName(service._serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service._fqsn);                  // PTR SRV
     // size += service.config.subtypes.empty() ? 0 : std::accumulate(service.config.subtypes.begin(), service.config.subtypes.end(), static_cast<size_t>(0), [&](size_t size, const auto& subtype) {
     //     return size + _sizeofDNSName(subtype + "._sub." + service._serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service._fqsn);
     // });
@@ -1649,7 +1671,7 @@ static size_t _sizeofCompleteRecord(const MDNS::Services& services, const MDNS::
     size += services.empty() ? 0 : std::accumulate(services.begin(), services.end(), static_cast<size_t>(0), [&](size_t size, const MDNS::Service& service) {
         size += _sizeofDNSName(service._fqsn) + DNS_RECORD_HEADER_SIZE + DNS_SRV_DETAILS_SIZE + _sizeofDNSName(fqhn);    // SRV
         size += _sizeofDNSName(service._fqsn) + DNS_RECORD_HEADER_SIZE + service.text.length();                          // TXT
-        size += _sizeofDNSName(service._serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service._fqsn);                   // PTR SRV
+        size += _sizeofDNSName(service._serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service._fqsn);                  // PTR SRV
         return size;
     });
     size += serviceTypes.empty() ? 0 : std::accumulate(serviceTypes.begin(), serviceTypes.end(), static_cast<size_t>(0), [&](size_t size, const String& serviceType) {

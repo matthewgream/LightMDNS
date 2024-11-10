@@ -191,7 +191,7 @@ void setup() {
         0x5A, 0x2E, 0x16, 0xC7, 0x61, 0x47, 0x83, 0x28, 0x39, 0x15, 0x56, 0x9C, 0x44, 0x7B, 0x89, 0x2B,
         0x17, 0xD2, 0x44, 0x84, 0x96, 0xA4, 0xE2, 0x83, 0x90, 0x53, 0x47, 0xBB, 0x1C, 0x47, 0xF2, 0x5A
     };
-    HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(
+    HALT_ON_MDNS_ERROR(mdns->serviceInsert(
         MDNS::Service::Builder ()
             .withName ("Secure-MQTT._mqtt")
             .withPort (8883)
@@ -206,7 +206,7 @@ void setup() {
     ), "serviceRecordInsert");
 
     // 2. plain old web server
-    HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(
+    HALT_ON_MDNS_ERROR(mdns->serviceInsert(
         MDNS::Service::Builder ()
             .withName ("webserver._http")
             .withPort (80)
@@ -223,7 +223,7 @@ void setup() {
     HALT_ON_MDNS_ERROR(mdns->process(), "process");
 
     // 3. HTTP Print Service (IPP/AirPrint)
-    HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(
+    HALT_ON_MDNS_ERROR(mdns->serviceInsert(
         MDNS::Service::Builder ()
             .withName ("ColorLaser._ipp")
             .withPort (631)
