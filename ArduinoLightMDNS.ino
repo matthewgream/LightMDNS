@@ -167,7 +167,7 @@ MDNS *mdns;
 #define HALT_ON_MDNS_ERROR(func, name) \
     { \
         MDNS::Status status; \
-        if ((status = func) != MDNS::Success) { \
+        if ((status = func) != MDNS::Status::Success) { \
             Serial.printf("MDNS %s: error=%s\n", name, MDNS::toString(status).c_str()); \
             esp_deep_sleep_start(); \
         } \
@@ -192,24 +192,30 @@ void setup() {
         0x17, 0xD2, 0x44, 0x84, 0x96, 0xA4, 0xE2, 0x83, 0x90, 0x53, 0x47, 0xBB, 0x1C, 0x47, 0xF2, 0x5A
     };
     HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(
-        MDNS::Service{
-            .port = 8883, .proto = MDNS::ServiceTCP, .name = "Secure-MQTT._mqtt",
-            .text = MDNSTXTRecord().build()
+        MDNS::Service::Builder ()
+            .withName ("Secure-MQTT._mqtt")
+            .withPort (8883)
+            .withProtocol (MDNS::Service::Protocol::TCP)
+            .withTXT(MDNS::Service::TXT::Builder ()
                 .add("cert", cert_fingerprint, sizeof(cert_fingerprint))
                 .add("version", "3.1.1")
                 .add("secure")
                 .add("auth")
-        }
+                .build())
+            .build()
     ), "serviceRecordInsert");
 
     // 2. plain old web server
     HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(
-        MDNS::Service{
-            .port = 80, .proto = MDNS::ServiceTCP, .name = "webserver._http",
-            .text = MDNSTXTRecord().build()
+        MDNS::Service::Builder ()
+            .withName ("webserver._http")
+            .withPort (80)
+            .withProtocol (MDNS::Service::Protocol::TCP)
+            .withTXT(MDNS::Service::TXT::Builder ()
                 .add("type", "example")
                 .add("notreally", true)
-        }
+                .build())
+            .build()
     ), "serviceRecordInsert");
 
     HALT_ON_MDNS_ERROR(mdns->start(WIFI_ADDR, WIFI_HOST), "start");
@@ -218,16 +224,19 @@ void setup() {
 
     // 3. HTTP Print Service (IPP/AirPrint)
     HALT_ON_MDNS_ERROR(mdns->serviceRecordInsert(
-        MDNS::Service{
-            .port = 631, .proto = MDNS::ServiceTCP, .name = "ColorLaser._ipp",
-            .text = MDNSTXTRecord().build()
+        MDNS::Service::Builder ()
+            .withName ("ColorLaser._ipp")
+            .withPort (631)
+            .withProtocol (MDNS::Service::Protocol::TCP)
+            .withTXT(MDNS::Service::TXT::Builder ()
                 .add("txtvers", 1)
                 .add("rp", "printers/colorlaser")
                 .add("pdl", "application/pdf,image/jpeg,image/urf")
                 .add("Color")
                 .add("Duplex", false)
                 .add("UUID", "564e4333-4230-3431-3533-186024c51c02")
-        }
+                .build())
+            .build()
     ), "serviceRecordInsert");
 }
 

@@ -25,12 +25,13 @@
 #if !defined(__MDNS_H__)
 #define __MDNS_H__ 1
 
+// -----------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------
+
 #include <Arduino.h>
 
 #include <vector>
 #include <set>
-
-// -----------------------------------------------------------------------------------------------
 
 #define DEBUG_MDNS
 #if !defined(DEBUG_PRINTF)
@@ -44,20 +45,23 @@
 #endif
 
 // -----------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------
 
 class MDNSTXTBuilder;
-class MDNSTXTRecord {
+class MDNSTXT {
 
 public:
     static constexpr size_t KEY_LENGTH_MAX = 9;        // RFC recommendation
-    static constexpr size_t VALUE_LENGTH_MAX = 255;    // DNS limitation
     static constexpr size_t TOTAL_LENGTH_MAX = 255;    // Per TXT string
-    struct Entry {
+
+    struct _Entry {
         String key;
         std::vector<uint8_t> value;
         bool binary;
     };
-    using Entries = std::vector<Entry>;
+    using Entries = std::vector<_Entry>;
+
+    using Builder = MDNSTXTBuilder;
 
 private:
     Entries _entries;
@@ -67,8 +71,6 @@ private:
 
 public:
     bool insert(const String& key, const void* value, const size_t length, const bool is_binary);
-
-    inline MDNSTXTBuilder build();
 
     inline const Entries& entries() const {
         return _entries;
@@ -80,48 +82,36 @@ public:
     String toString() const;
 };
 
-#include <stdexcept>
+// -----------------------------------------------------------------------------------------------
 
-class MDNSTXTBuilder {
+class MDNSServiceBuilder;
+struct MDNSService {
+    using TXT = MDNSTXT;
 
-private:
-    MDNSTXTRecord& txt;
-
-protected:
-    inline MDNSTXTBuilder& _add(const String& key, const void* value, const size_t length, const bool is_binary) {
-        if (!txt.insert(key, value, length, is_binary)) throw std::runtime_error("TXT insert failed");
-        return *this;
+    struct Config {
+        uint16_t priority = 0x0000;
+        uint16_t weight = 0x0000;
+        // std::vector<String> subtypes;
+    };
+    enum class Protocol {
+        TCP,
+        UDP
+    };
+    static String toString(const Protocol protocol) {
+        if (protocol == Protocol::TCP) return "TCP";
+        else if (protocol == Protocol::UDP) return "UDP";
+        else return "Unknown";
     }
 
-public:
-    explicit MDNSTXTBuilder(MDNSTXTRecord& t)
-        : txt(t) {}
-    inline MDNSTXTBuilder& add(const String& key) {
-        return _add(key, nullptr, 0, false);
-    }
-    inline MDNSTXTBuilder& add(const String& key, const String& value) {
-        return _add(key, reinterpret_cast<const uint8_t*>(value.c_str()), value.length(), false);
-    }
-    inline MDNSTXTBuilder& add(const String& key, const char* value) {
-        return add(key, String(value));
-    }
-    inline MDNSTXTBuilder& add(const String& key, const bool value) {
-        return add(key, String(value ? "true" : "false"));
-    }
-    inline MDNSTXTBuilder& add(const String& key, const int value) {
-        return add(key, String(value));
-    }
-    inline MDNSTXTBuilder& add(const String& key, const uint8_t* value, const size_t length) {
-        return _add(key, value, length, true);
-    }
-    inline operator MDNSTXTRecord&() {
-        return txt;
-    }
+    uint16_t port;
+    Protocol proto;
+    String name;
+    Config config{};
+    TXT text{};
+    String _serv{}, _fqsn{};
+
+    using Builder = MDNSServiceBuilder;
 };
-
-inline MDNSTXTBuilder MDNSTXTRecord::build(void) {
-    return MDNSTXTBuilder(*this);
-}
 
 // -----------------------------------------------------------------------------------------------
 
@@ -135,7 +125,7 @@ public:
         uint32_t shared_max = 10;    // Maximum TTL for shared records per RFC
     };
 
-    typedef enum {
+    enum class Status {
         TryLater = 2,
         Success = 1,
         Failure = 0,
@@ -144,45 +134,25 @@ public:
         ServerError = -3,
         PacketBad = -4,
         NameConflict = -5,
-    } Status;
+    };
     static String toString(const Status status) {
         switch (status) {
-            case TryLater: return "TryLater";
-            case Success: return "Success";
-            case Failure: return "Failure";
-            case InvalidArgument: return "InvalidArgument";
-            case OutOfMemory: return "OutOfMemory";
-            case ServerError: return "ServerError";
-            case PacketBad: return "PacketBad";
-            case NameConflict: return "NameConflict";
+            case Status::TryLater: return "TryLater";
+            case Status::Success: return "Success";
+            case Status::Failure: return "Failure";
+            case Status::InvalidArgument: return "InvalidArgument";
+            case Status::OutOfMemory: return "OutOfMemory";
+            case Status::ServerError: return "ServerError";
+            case Status::PacketBad: return "PacketBad";
+            case Status::NameConflict: return "NameConflict";
             default: return "Unknown";
         }
     }
 
-    typedef enum {
-        ServiceTCP,
-        ServiceUDP
-    } ServiceProtocol;
-    static String toString(const ServiceProtocol serviceProtocol) {
-        if (serviceProtocol == ServiceTCP) return "TCP";
-        else if (serviceProtocol == ServiceUDP) return "UDP";
-        else return "Unknown";
-    }
-    struct ServiceConfig {
-        uint16_t priority = 0x0000;
-        uint16_t weight = 0x0000;
-        // std::vector<String> subtypes;
-    };
-    typedef struct {
-        uint16_t port;
-        ServiceProtocol proto;
-        String name;
-        ServiceConfig config{};
-        MDNSTXTRecord text{};
-        String serv{}, fqsn{};
-    } Service;
+    using Service = MDNSService;
     using Services = std::vector<Service>;
     using ServiceTypes = std::set<String>;
+    using ServiceBuilder = Service::Builder;
 
 private:
     UDP* _udp;
@@ -211,8 +181,8 @@ private:
         return ((_ttls.announce / 2) + (_ttls.announce / 4)) * static_cast<uint32_t>(1000);
     }
 
-    Status serviceRecordInsert(const ServiceProtocol proto, const uint16_t port, const String& name, const MDNSTXTRecord& text = MDNSTXTRecord());    // deprecated
-    Status serviceRecordRemove(const ServiceProtocol proto, const uint16_t port, const String& name);                                                 // deprecated
+    Status serviceRecordInsert(const Service::Protocol proto, const uint16_t port, const String& name, const Service::Config& config = Service::Config(), const Service::TXT& text = Service::TXT());    // deprecated
+    Status serviceRecordRemove(const Service::Protocol proto, const uint16_t port, const String& name);                                                                                                  // deprecated
 
 public:
     explicit MDNS(UDP& udp);
@@ -224,12 +194,118 @@ public:
     Status stop(void);
 
     inline Status serviceRecordInsert(const Service& service) {
-        return serviceRecordInsert(service.proto, service.port, service.name, service.text);
+        return serviceRecordInsert(service.proto, service.port, service.name, service.config, service.text);
     }
     inline Status serviceRecordRemove(const Service& service) {
         return serviceRecordRemove(service.proto, service.port, service.name);
     }
     Status serviceRecordClear(void);
 };
+
+// -----------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------
+
+#include <stdexcept>
+
+class MDNSTXTBuilder {
+private:
+    MDNSTXT _record;
+
+    inline MDNSTXTBuilder& _add(const String& key, const void* value, const size_t length, const bool is_binary) {
+        if (!_record.insert(key, value, length, is_binary)) throw std::runtime_error("TXT insert failed");
+        return *this;
+    }
+
+public:
+    MDNSTXTBuilder()
+        : _record{} {}
+
+    inline MDNSTXT build() const {
+        return _record;
+    }
+    inline operator MDNSTXT() const {
+        return build();
+    }
+
+    inline MDNSTXTBuilder& add(const String& key) {
+        return _add(key, nullptr, 0, false);
+    }
+    inline MDNSTXTBuilder& add(const String& key, const String& value) {
+        return _add(key, reinterpret_cast<const uint8_t*>(value.c_str()), value.length(), false);
+    }
+    inline MDNSTXTBuilder& add(const String& key, const char* value) {
+        return add(key, String(value));
+    }
+    inline MDNSTXTBuilder& add(const String& key, const bool value) {
+        return add(key, String(value ? "true" : "false"));
+    }
+    inline MDNSTXTBuilder& add(const String& key, const int value) {
+        return add(key, String(value));
+    }
+    inline MDNSTXTBuilder& add(const String& key, const uint8_t* value, const size_t length) {
+        return _add(key, value, length, true);
+    }
+};
+
+// -----------------------------------------------------------------------------------------------
+
+class MDNSServiceBuilder {
+private:
+    using Service = MDNS::Service;
+
+    Service _service;
+
+    bool _hasName{ false }, _hasPort{ false }, _hasProtocol{ false };
+    inline bool validate() const {
+        return (_hasName && _hasPort && _hasProtocol);
+    }
+
+public:
+    MDNSServiceBuilder()
+        : _service{} {}
+
+    MDNS::Service build() const {
+        if (!validate())
+            throw std::runtime_error("Invalid service configuration: missing required fields");
+        return _service;
+    }
+    operator MDNS::Service() const {
+        return build();
+    }
+
+    MDNSServiceBuilder& withName(const String& name) {
+        _service.name = name;
+        _hasName = true;
+        return *this;
+    }
+    MDNSServiceBuilder& withPort(uint16_t port) {
+        _service.port = port;
+        _hasPort = true;
+        return *this;
+    }
+    MDNSServiceBuilder& withProtocol(Service::Protocol proto) {
+        _service.proto = proto;
+        _hasProtocol = true;
+        return *this;
+    }
+    MDNSServiceBuilder& withConfig(const Service::Config& config) {
+        _service.config = config;
+        return *this;
+    }
+    MDNSServiceBuilder& withPriority(uint16_t priority) {
+        _service.config.priority = priority;
+        return *this;
+    }
+    MDNSServiceBuilder& withWeight(uint16_t weight) {
+        _service.config.weight = weight;
+        return *this;
+    }
+    MDNSServiceBuilder& withTXT(const Service::TXT& txt) {
+        _service.text = txt;
+        return *this;
+    }
+};
+
+// -----------------------------------------------------------------------------------------------
 
 #endif    // __MDNS_H__
