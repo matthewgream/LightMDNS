@@ -1423,10 +1423,6 @@ static inline void _encodeUint32(uint8_t* ptr, const uint32_t val) {
     *((uint32_t*)ptr) = htonl(val);
 }
 
-static inline void _writeByte(UDP* _udp, const uint8_t byte) {
-    UDP_WRITE_BYTE(byte);
-}
-
 static inline void _writeBits(UDP* _udp, const uint8_t byte1, const uint8_t byte2, const uint8_t byte3, const uint8_t byte4, const uint32_t ttl) {
     uint8_t buffer[8];
     buffer[0] = byte1;
@@ -1502,8 +1498,7 @@ static inline void _write(UDP* _udp, const MDNSTXTRecord& record) {
                 } else
                     encoded += String(reinterpret_cast<const char*>(entry.value.data()), entry.value.size());
             }
-            UDP_WRITE_BYTE(encoded.length());
-            UDP_WRITE_DATA(reinterpret_cast<const uint8_t*>(encoded.c_str()), encoded.length());
+            _writeStringLengthAndContent(_udp, encoded, MDNSTXTRecord::TOTAL_LENGTH_MAX);
         }
     }
 }
