@@ -771,8 +771,8 @@ struct NameCollector {
     Names _names;
     //
     String _uncompress(const size_t target) const {
-        for (const auto& name : _names)
-            for (const auto& [label, offset] : name.labels)
+        for (const auto& n : _names)
+            for (const auto& [label, offset] : n.labels)
                 if (target >= offset && target < (offset + label.length()))
                     return (target == offset) ? label : label.substring(target - offset);
         DEBUG_PRINTF("*** WARNING: could not uncompress at %u ***\n", target);
@@ -789,9 +789,9 @@ struct NameCollector {
     }
     std::vector<String> names(const DNSSection section = DNSSection::All) const {
         std::vector<String> names;
-        for (const auto& name : _names)
-            if ((name.section & section) == name.section)
-                names.push_back(_name(name.labels));
+        for (const auto& n : _names)
+            if ((n.section & section) == n.section)
+                names.push_back(_name(n.labels));
         return names;
     }
     virtual void begin() {}
@@ -1467,7 +1467,7 @@ static inline void _writeDNSName(UDP* _udp, const String& name) {
         }
         if ((write_pos - (length_pos + 1)) > 0) {
             buffer[length_pos] = static_cast<uint8_t>(write_pos - (length_pos + 1));
-            length_pos = write_pos;
+            // length_pos = write_pos;
             write_pos++;
         }
         buffer[--write_pos] = 0;    // null terminator

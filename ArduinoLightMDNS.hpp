@@ -97,10 +97,10 @@ public:
     explicit MDNSTXTBuilder(MDNSTXTRecord& t)
         : txt(t) {}
     inline MDNSTXTBuilder& add(const String& key) {
-        return _add (key, nullptr, 0, false);
+        return _add(key, nullptr, 0, false);
     }
     inline MDNSTXTBuilder& add(const String& key, const String& value) {
-        return _add (key, reinterpret_cast<const uint8_t*>(value.c_str()), value.length(), false);
+        return _add(key, reinterpret_cast<const uint8_t*>(value.c_str()), value.length(), false);
     }
     inline MDNSTXTBuilder& add(const String& key, const char* value) {
         return add(key, String(value));
@@ -112,7 +112,7 @@ public:
         return add(key, String(value));
     }
     inline MDNSTXTBuilder& add(const String& key, const uint8_t* value, const size_t length) {
-        return _add (key, value, length, true);
+        return _add(key, value, length, true);
     }
     inline operator MDNSTXTRecord&() {
         return txt;
@@ -189,12 +189,12 @@ private:
     IPAddress _addr;
     String _name, _fqhn, _arpa;
     TTLConfig _ttls;
-    bool _enabled{false};
+    bool _enabled{ false };
 
     Status _messageRecv(void);
     Status _messageSend(const uint16_t xid, const int type, const Service* service = nullptr);
 
-    unsigned long _announced{0};
+    unsigned long _announced{ 0 };
     Status _announce(void);
     Status _conflicted(void);
 
