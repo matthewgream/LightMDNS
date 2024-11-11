@@ -1,1 +1,21 @@
-from https://github.com/arduino-libraries/ArduinoMDNS
+
+The original version was highly defective and non-compliant to RFC (in such ways as the encoding of TXT records was totally incorrect, DNS name compression being partly supported). 
+Futhermore, it was poor implemented, being highly fragile with some very difficult to understand code.
+
+The renovated version is,
+
+1. compliant to RFC, and interoperable tested (not extensively mind you, but against devices and tools)
+2. has improved service support, uses NSEC records for AAAA NAK, supports probing, does conflict checking, answers reverse address (arpa) queries
+3. removes significant amount of horrific pointer and memory usage, by adopting Strings and C++ std components
+4. is more modular and extensible, and the remaining questionable code has been jailed (e.g. query matching, UDP read/write)
+5. more robust on error checking, data validation (class interface and packet reception/interpretation)
+6. removes the use of magic numbers to move to defined and configurable constants
+7. ***extensively*** instrumented with protocol and record level diagnostics and packet byte level debugging
+8. employs const correctness, pass by references, and modern C++ containers, algorithms for safety, simplicity and performance
+9. reduces the amount of data copying and intermediate buffering
+
+It still needs work, primarily to refactor the matching algorithm and tidy up the UDP / Name parsing. The messageRecv flow especially.
+
+Ideally, it should moved to proper OO/C++, e.g. messageSend -> message -> records -> elements flow is pretty much ready to be converted into classes.
+
+Originally from https://github.com/arduino-libraries/ArduinoMDNS
