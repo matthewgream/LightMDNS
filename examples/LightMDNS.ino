@@ -159,7 +159,7 @@ void wiFiConnect() {
 // -----------------------------------------------------------------------------------------------
 
 #include <WiFiUdp.h>
-#include "ArduinoLightMDNS.hpp"
+#include "LightMDNS.hpp"
 
 WiFiUDP *udp;
 MDNS *mdns;

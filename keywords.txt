@@ -1,0 +1,30 @@
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+
+MDNS	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+begin	KEYWORD2
+start	KEYWORD2
+process	KEYWORD2
+stop	KEYWORD2
+serviceInsert	KEYWORD2
+serviceRemove	KEYWORD2
+serviceClear	KEYWORD2
+
+#######################################
+# Instances (KEYWORD2)
+#######################################
+
+
+#######################################
+# Constants (LITERAL1)
+#######################################
+
+DEBUG_MDNS	LITERAL1
+
