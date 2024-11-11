@@ -1,18 +1,17 @@
 
-The original version was highly defective and non-compliant to RFC (in such ways as the encoding of TXT records was totally incorrect, DNS name compression being partly supported). 
-Futhermore, it was poor implemented, being highly fragile with some very difficult to understand code.
+The original version was highly defective and non-compliant to RFC (in such ways as the encoding of TXT records was totally incorrect, DNS name compression being partly supported). Futhermore, it was poor implemented, being highly fragile with some very difficult to understand code.
 
-The renovated version is,
+The renovated version:
 
-1. compliant to RFC, and interoperable tested (not extensively mind you, but against devices and tools)
-2. has improved service support, uses NSEC records for AAAA NAK, supports probing, does conflict checking, answers reverse address (arpa) queries
-3. removes significant amount of horrific pointer and memory usage, by adopting Strings and C++ std components
-4. is more modular and extensible, and the remaining questionable code has been jailed (e.g. query matching, UDP read/write)
-5. more robust on error checking, data validation (class interface and packet reception/interpretation)
-6. removes the use of magic numbers to move to defined and configurable constants
-7. ***extensively*** instrumented with protocol and record level diagnostics and packet byte level debugging
-8. employs const correctness, pass by references, and modern C++ containers, algorithms for safety, simplicity and performance
-9. reduces the amount of data copying and intermediate buffering
+1. RFC compliant to RFC, interoperable tested (adoc against devices and tools)
+2. improved service handling, employs NSEC records, supports probing, does conflict checking, answers reverse address (arpa) queries
+3. removes horrific pointer and memory usage, by adopting Strings and C++ std components
+4. highly modular and extensible, with remaining questionable jailed (e.g. query matching, UDP read/write)
+5. adds robust error checking, data validation (class interface usage and network packet reception)
+6. removes magic numbers in place of defined and configurable constants
+7. is ***extensively*** instrumented at software, protocol and network levels
+8. employs const correctness, references, and modern C++ containers, algorithms
+9. reduced duplicative data copying and intermediate buffering
 
 It still needs work, primarily to refactor the matching algorithm and tidy up the UDP / Name parsing. The messageRecv flow especially.
 
