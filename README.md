@@ -5,7 +5,7 @@ The original version was highly defective and non-compliant to RFC (in such ways
 
 The renovated version:
 
-* RFC compliant to RFC, interoperable tested (adoc against devices and tools)
+* compliant to RFC, interoperable tested (adoc against devices and tools)
 * improved service handling, employs NSEC records, supports probing, does conflict checking, answers reverse address (arpa) queries
 * removes horrific pointer and memory usage, by adopting Strings and C++ std components
 * highly modular and extensible, with remaining questionable jailed (e.g. query matching, UDP read/write)
