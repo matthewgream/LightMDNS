@@ -33,7 +33,10 @@
 #include <vector>
 #include <set>
 
-#define DEBUG_MDNS
+//#define DEBUG_MDNS
+//#define DEBUG_MDNS_UDP_READ
+//#define DEBUG_MDNS_UDP_WRITE
+
 #if !defined(DEBUG_PRINTF)
 #ifdef DEBUG_MDNS
 #define DEBUG_PRINTF Serial.printf
