@@ -22,7 +22,7 @@
 //  <http://www.gnu.org/licenses/>.
 //
 
-#if !defined(__MDNS_H__)
+#if ! defined(__MDNS_H__)
 #define __MDNS_H__ 1
 
 // -----------------------------------------------------------------------------------------------
@@ -33,16 +33,16 @@
 #include <vector>
 #include <set>
 
-//#define DEBUG_MDNS
-//#define DEBUG_MDNS_UDP_READ
-//#define DEBUG_MDNS_UDP_WRITE
+// #define DEBUG_MDNS
+// #define DEBUG_MDNS_UDP_READ
+// #define DEBUG_MDNS_UDP_WRITE
 
-#if !defined(DEBUG_PRINTF)
+#if ! defined(DEBUG_PRINTF)
 #ifdef DEBUG_MDNS
 #define DEBUG_PRINTF Serial.printf
 #else
 #define DEBUG_PRINTF(...) \
-    do { \
+    do {                  \
     } while (0)
 #endif
 #endif
@@ -68,21 +68,21 @@ public:
 
 private:
     Entries _entries;
-    mutable uint16_t cached_length{ 0 };
-    mutable bool length_valid{ false };
-    bool validate(const String& key) const;
+    mutable uint16_t cached_length { 0 };
+    mutable bool length_valid { false };
+    bool validate (const String &key) const;
 
 public:
-    bool insert(const String& key, const void* value, const size_t length, const bool is_binary);
+    bool insert (const String &key, const void *value, const size_t length, const bool is_binary);
 
-    inline const Entries& entries() const {
+    inline const Entries &entries () const {
         return _entries;
     }
-    inline size_t size() const {
-        return _entries.size();
+    inline size_t size () const {
+        return _entries.size ();
     }
-    uint16_t length() const;
-    String toString() const;
+    uint16_t length () const;
+    String toString () const;
 };
 
 // -----------------------------------------------------------------------------------------------
@@ -100,18 +100,21 @@ struct MDNSService {
         TCP,
         UDP
     };
-    static String toString(const Protocol protocol) {
-        if (protocol == Protocol::TCP) return "TCP";
-        else if (protocol == Protocol::UDP) return "UDP";
-        else return "Unknown";
+    static String toString (const Protocol protocol) {
+        if (protocol == Protocol::TCP)
+            return "TCP";
+        else if (protocol == Protocol::UDP)
+            return "UDP";
+        else
+            return "Unknown";
     }
 
     uint16_t port;
     Protocol proto;
     String name;
-    Config config{};
-    TXT text{};
-    String _serv{}, _fqsn{};
+    Config config {};
+    TXT text {};
+    String _serv {}, _fqsn {};
 
     using Builder = MDNSServiceBuilder;
 };
@@ -138,6 +141,7 @@ public:
         PacketBad = -4,
         NameConflict = -5,
     };
+    // clang-format off
     static String toString(const Status status) {
         switch (status) {
             case Status::TryLater: return "TryLater";
@@ -151,6 +155,7 @@ public:
             default: return "Unknown";
         }
     }
+    // clang-format on 
 
     using Service = MDNSService;
     using Services = std::vector<Service>;

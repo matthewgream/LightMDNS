@@ -36,11 +36,11 @@
 
 #include <esp_mac.h>
 
-__attribute__((weak)) String getMacAddressBase(void) {
-    uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_BASE);
-    char str[6 * 2 + 1];
-    snprintf(str, sizeof(str), "%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+__attribute__ ((weak)) String getMacAddressBase (void) {
+    uint8_t mac [6];
+    esp_read_mac (mac, ESP_MAC_BASE);
+    char str [6 * 2 + 1];
+    snprintf (str, sizeof (str), "%02x%02x%02x%02x%02x%02x", mac [0], mac [1], mac [2], mac [3], mac [4], mac [5]);
     return str;
 }
 
@@ -48,8 +48,8 @@ __attribute__((weak)) String getMacAddressBase(void) {
 
 #include <numeric>
 
-static String join(const std::vector<String>& elements, const String& delimiter) {
-    return elements.empty() ? String() : std::accumulate(std::next(elements.begin()), elements.end(), elements[0], [&delimiter](const String& a, const String& b) {
+static String join (const std::vector<String> &elements, const String &delimiter) {
+    return elements.empty () ? String () : std::accumulate (std::next (elements.begin ()), elements.end (), elements [0], [&delimiter] (const String &a, const String &b) {
         return a + delimiter + b;
     });
 }
@@ -58,7 +58,7 @@ static String join(const std::vector<String>& elements, const String& delimiter)
 // -----------------------------------------------------------------------------------------------
 
 #define TLD ".local"
-static constexpr const char* SERVICE_SD__fqsn = "_services._dns-sd._udp.local";
+static constexpr const char *SERVICE_SD__fqsn = "_services._dns-sd._udp.local";
 
 typedef enum {
     PacketTypeCompleteRecord,     // All record provide
@@ -88,7 +88,7 @@ typedef struct {
     uint16_t answerCount;              // ANCOUNT: Number of records in the answer section
     uint16_t authorityCount;           // NSCOUNT: Number of records in the authority section
     uint16_t additionalCount;          // ARCOUNT: Number of records in the additional section
-} __attribute__((__packed__)) Header;
+} __attribute__ ((__packed__)) Header;
 
 // -----------------------------------------------------------------------------------------------
 
@@ -178,12 +178,13 @@ enum class DNSRecordUniqueness {
     Contextual    // TXT records - unique when with SRV
 };
 
-static inline uint8_t _configureCacheFlush(const DNSRecordUniqueness uniqueness, const bool isProbing = false) {
-    if (isProbing) return DNS_CACHE_NO_FLUSH;
+static inline uint8_t _configureCacheFlush (const DNSRecordUniqueness uniqueness, const bool isProbing = false) {
+    if (isProbing)
+        return DNS_CACHE_NO_FLUSH;
     return (uniqueness == DNSRecordUniqueness::Unique || uniqueness == DNSRecordUniqueness::Contextual) ? DNS_CACHE_FLUSH : DNS_CACHE_NO_FLUSH;
 }
-static inline uint32_t _configureTTL(const DNSRecordUniqueness uniqueness, const MDNS::TTLConfig& ttls, const uint32_t ttl) {
-    return ttl == 0 ? 0 : (uniqueness == DNSRecordUniqueness::Shared ? std::min(ttl, ttls.shared_max) : ttl);
+static inline uint32_t _configureTTL (const DNSRecordUniqueness uniqueness, const MDNS::TTLConfig &ttls, const uint32_t ttl) {
+    return ttl == 0 ? 0 : (uniqueness == DNSRecordUniqueness::Shared ? std::min (ttl, ttls.shared_max) : ttl);
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -195,28 +196,37 @@ enum class DNSSection {
     Additional = 1 << 3,
     All = Query | Answer | Authority | Additional
 };
-static constexpr DNSSection operator|(const DNSSection a, const DNSSection b) {
-    return static_cast<DNSSection>(static_cast<int>(a) | static_cast<int>(b));
+static constexpr DNSSection operator| (const DNSSection a, const DNSSection b) {
+    return static_cast<DNSSection> (static_cast<int> (a) | static_cast<int> (b));
 }
-static constexpr DNSSection operator&(const DNSSection a, const DNSSection b) {
-    return static_cast<DNSSection>(static_cast<int>(a) & static_cast<int>(b));
+static constexpr DNSSection operator& (const DNSSection a, const DNSSection b) {
+    return static_cast<DNSSection> (static_cast<int> (a) & static_cast<int> (b));
 }
-static DNSSection getSection(const size_t i, const size_t qd, const size_t an, const size_t ns) {
-    if (i < qd) return DNSSection::Query;
-    if (i < an) return DNSSection::Answer;
-    if (i < ns) return DNSSection::Authority;
+static DNSSection getSection (const size_t i, const size_t qd, const size_t an, const size_t ns) {
+    if (i < qd)
+        return DNSSection::Query;
+    if (i < an)
+        return DNSSection::Answer;
+    if (i < ns)
+        return DNSSection::Authority;
     return DNSSection::Additional;
 }
-__attribute__((unused)) static const char* getSectionName(const DNSSection section) {
+__attribute__ ((unused)) static const char *getSectionName (const DNSSection section) {
     switch (section) {
-        case DNSSection::Query: return "query";
-        case DNSSection::Answer: return "answer";
-        case DNSSection::Authority: return "authority";
-        default: return "additional";
+    case DNSSection::Query :
+        return "query";
+    case DNSSection::Answer :
+        return "answer";
+    case DNSSection::Authority :
+        return "authority";
+    default :
+        return "additional";
     }
 }
 
 // -----------------------------------------------------------------------------------------------
+
+// clang-format off
 
 __attribute__((unused)) static String parseDNSType(const uint16_t type) {
     switch (type) {
@@ -303,43 +313,45 @@ __attribute__((unused)) static String parseDNSClassOrEDNS(const uint8_t classByt
     }
 }
 
-__attribute__((unused)) static String parseHeader(const Header& h) {
-    static const char* opcodes[] = { "QUERY", "IQUERY", "STATUS", "RESERVED", "NOTIFY", "UPDATE", "UNK6", "UNK7", "UNK8", "UNK9", "UNK10", "UNK11", "UNK12", "UNK13", "UNK14", "UNK15" };
-    static const char* rcodes[] = { "NOERROR", "FORMERR", "SERVFAIL", "NXDOMAIN", "NOTIMP", "REFUSED", "YXDOMAIN", "YXRRSET", "NXRRSET", "NOTAUTH", "NOTZONE", "UNK11", "UNK12", "UNK13", "UNK14", "UNK15" };
-    return join({ "ID=0x" + String(h.xid, HEX),
-                  "QR=" + String(h.queryResponse),
-                  "OPCODE=" + String(opcodes[h.opCode]),
-                  "AA=" + String(h.authoritiveAnswer),
-                  "TC=" + String(h.truncated),
-                  "RD=" + String(h.recursionDesired),
-                  "RA=" + String(h.recursionAvailable),
-                  "Z=" + String(h.zReserved),
-                  "AD=" + String(h.authenticatedData),
-                  "CD=" + String(h.checkingDisabled),
-                  "RCODE=" + String(rcodes[h.responseCode]),
-                  "QDCOUNT=" + String(h.queryCount),
-                  "ANCOUNT=" + String(h.answerCount),
-                  "NSCOUNT=" + String(h.authorityCount),
-                  "ARCOUNT=" + String(h.additionalCount) },
-                ",");
+// clang-format on
+
+__attribute__ ((unused)) static String parseHeader (const Header &h) {
+    static const char *opcodes [] = { "QUERY", "IQUERY", "STATUS", "RESERVED", "NOTIFY", "UPDATE", "UNK6", "UNK7", "UNK8", "UNK9", "UNK10", "UNK11", "UNK12", "UNK13", "UNK14", "UNK15" };
+    static const char *rcodes [] = { "NOERROR", "FORMERR", "SERVFAIL", "NXDOMAIN", "NOTIMP", "REFUSED", "YXDOMAIN", "YXRRSET", "NXRRSET", "NOTAUTH", "NOTZONE", "UNK11", "UNK12", "UNK13", "UNK14", "UNK15" };
+    return join ({ "ID=0x" + String (h.xid, HEX),
+                   "QR=" + String (h.queryResponse),
+                   "OPCODE=" + String (opcodes [h.opCode]),
+                   "AA=" + String (h.authoritiveAnswer),
+                   "TC=" + String (h.truncated),
+                   "RD=" + String (h.recursionDesired),
+                   "RA=" + String (h.recursionAvailable),
+                   "Z=" + String (h.zReserved),
+                   "AD=" + String (h.authenticatedData),
+                   "CD=" + String (h.checkingDisabled),
+                   "RCODE=" + String (rcodes [h.responseCode]),
+                   "QDCOUNT=" + String (h.queryCount),
+                   "ANCOUNT=" + String (h.answerCount),
+                   "NSCOUNT=" + String (h.authorityCount),
+                   "ARCOUNT=" + String (h.additionalCount) },
+                 ",");
 }
 
-__attribute__((unused)) static String parseControl(const uint8_t ctrl[4]) {
-    const uint16_t type = (ctrl[0] << 8) | ctrl[1];
-    return parseDNSType(type) + "/" + parseDNSFlags(ctrl[2]) + "/" + parseDNSClassOrEDNS(ctrl[2], ctrl[3], type);    // Pass both bytes
+__attribute__ ((unused)) static String parseControl (const uint8_t ctrl [4]) {
+    const uint16_t type = (ctrl [0] << 8) | ctrl [1];
+    return parseDNSType (type) + "/" + parseDNSFlags (ctrl [2]) + "/" + parseDNSClassOrEDNS (ctrl [2], ctrl [3], type);    // Pass both bytes
 }
 
-__attribute__((unused)) static void parsePacket(const char* label, const uint8_t* data, const size_t size, const size_t offs = 0) {
-    static constexpr const char lookup[] = "0123456789ABCDEF";
-    char buffer[(16 * 3 + 2) + 1 + (16 * 1 + 2) + 1];
+__attribute__ ((unused)) static void parsePacket (const char *label, const uint8_t *data, const size_t size, const size_t offs = 0) {
+    static constexpr const char lookup [] = "0123456789ABCDEF";
+    char buffer [(16 * 3 + 2) + 1 + (16 * 1 + 2) + 1];
 
-    DEBUG_PRINTF("    %04X: <%s> : %s\n", size, label, parseHeader(*(reinterpret_cast<const Header*>(data))).c_str());
+    DEBUG_PRINTF ("    %04X: <%s> : %s\n", size, label, parseHeader (*(reinterpret_cast<const Header *> (data))).c_str ());
     // should annotate the RHS of the output with some of the details, e.g. using the parse functions above
     for (size_t i = 0; i < size; i += 16) {
-        char* position = buffer;
+        char *position = buffer;
         for (size_t j = 0; j < 16; j++) {
             if ((i + j) < size)
-                *position++ = lookup[(data[i + j] >> 4) & 0x0F], *position++ = lookup[(data[i + j] >> 0) & 0x0F], *position++ = ' ';
+                *position++ = lookup [(data [i + j] >> 4) & 0x0F], *position++ = lookup [(data [i + j] >> 0) & 0x0F], *position++ = ' ';
             else
                 *position++ = ' ', *position++ = ' ', *position++ = ' ';
             if ((j + 1) % 8 == 0)
@@ -348,56 +360,56 @@ __attribute__((unused)) static void parsePacket(const char* label, const uint8_t
         *position++ = ' ';
         for (size_t j = 0; j < 16; j++) {
             if ((i + j) < size)
-                *position++ = isprint(data[i + j]) ? (char)data[i + j] : '.';
+                *position++ = isprint (data [i + j]) ? (char) data [i + j] : '.';
             else
                 *position++ = ' ';
             if ((j + 1) % 8 == 0)
                 *position++ = ' ';
         }
         *position++ = '\0';
-        DEBUG_PRINTF("    %04X: %s\n", offs + i, buffer);
+        DEBUG_PRINTF ("    %04X: %s\n", offs + i, buffer);
     }
 }
 
 // -----------------------------------------------------------------------------------------------
 
-static const IPAddress MDNS_ADDR_MULTICAST(224, 0, 0, 251);
+static const IPAddress MDNS_ADDR_MULTICAST (224, 0, 0, 251);
 static constexpr uint16_t MDNS_PORT = 5353;
 
-static constexpr uint8_t calcSupportedRecordTypeByte(uint8_t type) {
+static constexpr uint8_t calcSupportedRecordTypeByte (uint8_t type) {
     return (type - 1) / 8;
 }
-static constexpr uint8_t calcSupportedRecordTypeMask(uint8_t type) {
+static constexpr uint8_t calcSupportedRecordTypeMask (uint8_t type) {
     return 1 << (7 - ((type - 1) % 8));
 }
 static constexpr struct SupportedRecordType {
     uint8_t type;
     uint8_t byte;
     uint8_t mask;
-} SupportedRecordTypes[] = {
-    { DNS_RECORD_A, calcSupportedRecordTypeByte(DNS_RECORD_A), calcSupportedRecordTypeMask(DNS_RECORD_A) },
-    { DNS_RECORD_PTR, calcSupportedRecordTypeByte(DNS_RECORD_PTR), calcSupportedRecordTypeMask(DNS_RECORD_PTR) },
-    { DNS_RECORD_TXT, calcSupportedRecordTypeByte(DNS_RECORD_TXT), calcSupportedRecordTypeMask(DNS_RECORD_TXT) },
-    { DNS_RECORD_SRV, calcSupportedRecordTypeByte(DNS_RECORD_SRV), calcSupportedRecordTypeMask(DNS_RECORD_SRV) },
-    { DNS_RECORD_NSEC, calcSupportedRecordTypeByte(DNS_RECORD_NSEC), calcSupportedRecordTypeMask(DNS_RECORD_NSEC) }
+} SupportedRecordTypes [] = {
+    { DNS_RECORD_A,    calcSupportedRecordTypeByte (DNS_RECORD_A),    calcSupportedRecordTypeMask (DNS_RECORD_A)    },
+    { DNS_RECORD_PTR,  calcSupportedRecordTypeByte (DNS_RECORD_PTR),  calcSupportedRecordTypeMask (DNS_RECORD_PTR)  },
+    { DNS_RECORD_TXT,  calcSupportedRecordTypeByte (DNS_RECORD_TXT),  calcSupportedRecordTypeMask (DNS_RECORD_TXT)  },
+    { DNS_RECORD_SRV,  calcSupportedRecordTypeByte (DNS_RECORD_SRV),  calcSupportedRecordTypeMask (DNS_RECORD_SRV)  },
+    { DNS_RECORD_NSEC, calcSupportedRecordTypeByte (DNS_RECORD_NSEC), calcSupportedRecordTypeMask (DNS_RECORD_NSEC) }
 };
 
-static constexpr const char* protocolPostfix(const MDNS::Service::Protocol proto) {
+static constexpr const char *protocolPostfix (const MDNS::Service::Protocol proto) {
     switch (proto) {
-        case MDNS::Service::Protocol::TCP:
-            return "._tcp" TLD;
-        case MDNS::Service::Protocol::UDP:
-            return "._udp" TLD;
-        default:
-            return "";
+    case MDNS::Service::Protocol::TCP :
+        return "._tcp" TLD;
+    case MDNS::Service::Protocol::UDP :
+        return "._udp" TLD;
+    default :
+        return "";
     }
 };
 
 static constexpr bool OPT_DETAILED_CHECKS = true;
 static constexpr uint16_t OPT_DETAILED_CHECKS_REASONABLE_COUNT = 100;
 
-static inline String makeReverseArpaName(const IPAddress& addr) {
-    return String(addr[3]) + "." + String(addr[2]) + "." + String(addr[1]) + "." + String(addr[0]) + ".in-addr.arpa";
+static inline String makeReverseArpaName (const IPAddress &addr) {
+    return String (addr [3]) + "." + String (addr [2]) + "." + String (addr [1]) + "." + String (addr [0]) + ".in-addr.arpa";
 }
 
 // -----------------------------------------------------------------------------------------------
@@ -407,25 +419,26 @@ struct DNSBitmap {
     static constexpr uint8_t NSEC_WINDOW_BLOCK_0 = 0x00;
     static constexpr uint8_t INITIAL_LENGTH = 2;
     std::array<uint8_t, 2 + BITMAP_SIZE> _data;
-    inline size_t size() const {
-        return static_cast<size_t>(_data[1]);
+    inline size_t size () const {
+        return static_cast<size_t> (_data [1]);
     }
-    inline const uint8_t* data() const {
-        return _data.data();
+    inline const uint8_t *data () const {
+        return _data.data ();
     }
-    DNSBitmap(const std::initializer_list<uint8_t>& types = {})
-        : _data{} {
-        _data[0] = NSEC_WINDOW_BLOCK_0;
-        _data[1] = INITIAL_LENGTH;
-        for (const auto& type : types)
-            addType(type);
+    DNSBitmap (const std::initializer_list<uint8_t> &types = {}) :
+        _data {} {
+        _data [0] = NSEC_WINDOW_BLOCK_0;
+        _data [1] = INITIAL_LENGTH;
+        for (const auto &type : types)
+            addType (type);
     }
-    DNSBitmap& addType(const uint8_t type) {
-        for (const auto& rt : SupportedRecordTypes)
+    DNSBitmap &addType (const uint8_t type) {
+        for (const auto &rt : SupportedRecordTypes)
             if (rt.type == type) {
                 const uint8_t offs = 2 + rt.byte;
-                _data[offs] |= rt.mask;
-                if (_data[1] < (offs + 1)) _data[1] = (offs + 1);
+                _data [offs] |= rt.mask;
+                if (_data [1] < (offs + 1))
+                    _data [1] = (offs + 1);
             }
         return *this;
     }
@@ -435,7 +448,7 @@ struct DNSBitmap {
 
 class Base64 {
 private:
-    static constexpr const char encodingTable[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    static constexpr const char encodingTable [] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     static constexpr size_t BITS_PER_CHAR = 6;        // Base64 uses 6 bits per character
     static constexpr size_t BITS_PER_BYTE = 8;        // Input uses 8 bits per byte
     static constexpr size_t OUTPUT_GROUP_SIZE = 4;    // Output characters per group
@@ -448,83 +461,85 @@ private:
     static constexpr uint8_t MASK_4BITS_NOT = 0xF0;
 
 public:
-    static size_t length(const size_t inputLength) {
+    static size_t length (const size_t inputLength) {
         return OUTPUT_GROUP_SIZE * ((inputLength + INPUT_GROUP_SIZE - 1) / INPUT_GROUP_SIZE);
     }
-    static size_t encode(const uint8_t* input, const size_t inputLength, char* output, const size_t outputLength) {
+    static size_t encode (const uint8_t *input, const size_t inputLength, char *output, const size_t outputLength) {
         if (outputLength < OUTPUT_GROUP_SIZE * ((inputLength + INPUT_GROUP_SIZE - 1) / INPUT_GROUP_SIZE))
             return 0;
         size_t inputIndex, outputIndex = 0;
         for (inputIndex = 0; inputIndex + INPUT_GROUP_SIZE - 1 < inputLength; inputIndex += INPUT_GROUP_SIZE) {
-            output[outputIndex++] = encodingTable[((input[inputIndex + 0] >> 2) & MASK_6BITS)];
-            output[outputIndex++] = encodingTable[((input[inputIndex + 0] & MASK_2BITS) << 4) | ((input[inputIndex + 1] & MASK_6BITS_NOT) >> 4)];
-            output[outputIndex++] = encodingTable[((input[inputIndex + 1] & MASK_4BITS) << 2) | ((input[inputIndex + 2] & MASK_6BITS_NOT) >> 6)];
-            output[outputIndex++] = encodingTable[((input[inputIndex + 2] & MASK_6BITS))];
+            output [outputIndex++] = encodingTable [((input [inputIndex + 0] >> 2) & MASK_6BITS)];
+            output [outputIndex++] = encodingTable [((input [inputIndex + 0] & MASK_2BITS) << 4) | ((input [inputIndex + 1] & MASK_6BITS_NOT) >> 4)];
+            output [outputIndex++] = encodingTable [((input [inputIndex + 1] & MASK_4BITS) << 2) | ((input [inputIndex + 2] & MASK_6BITS_NOT) >> 6)];
+            output [outputIndex++] = encodingTable [((input [inputIndex + 2] & MASK_6BITS))];
         }
         if (inputIndex < inputLength) {
-            output[outputIndex++] = encodingTable[(input[inputIndex] >> 2) & MASK_6BITS];
+            output [outputIndex++] = encodingTable [(input [inputIndex] >> 2) & MASK_6BITS];
             if (inputIndex == (inputLength - 1)) {
-                output[outputIndex++] = encodingTable[(input[inputIndex] & MASK_2BITS) << 4];
-                output[outputIndex++] = PADDING_CHAR;
+                output [outputIndex++] = encodingTable [(input [inputIndex] & MASK_2BITS) << 4];
+                output [outputIndex++] = PADDING_CHAR;
             } else {
-                output[outputIndex++] = encodingTable[((input[inputIndex + 0] & MASK_2BITS) << 4) | ((input[inputIndex + 1] & MASK_6BITS_NOT) >> 4)];
-                output[outputIndex++] = encodingTable[((input[inputIndex + 1] & MASK_4BITS) << 2)];
+                output [outputIndex++] = encodingTable [((input [inputIndex + 0] & MASK_2BITS) << 4) | ((input [inputIndex + 1] & MASK_6BITS_NOT) >> 4)];
+                output [outputIndex++] = encodingTable [((input [inputIndex + 1] & MASK_4BITS) << 2)];
             }
-            output[outputIndex++] = PADDING_CHAR;
+            output [outputIndex++] = PADDING_CHAR;
         }
-        output[outputIndex] = '\0';
+        output [outputIndex] = '\0';
         return outputIndex;
     }
 };
 
-static inline bool isValidDNSKeyChar(const char c) {
+static inline bool isValidDNSKeyChar (const char c) {
     return (c >= 0x20 && c <= 0x7E) && c != '=';    // RFC 6763 Section 6.4
 }
 
-bool MDNSTXT::validate(const String& key) const {
-    if (key.isEmpty() || key.length() > KEY_LENGTH_MAX) return false;
-    if (key.charAt(0) == '=') return false;
-    return std::all_of(key.begin(), key.end(), isValidDNSKeyChar);
+bool MDNSTXT::validate (const String &key) const {
+    if (key.isEmpty () || key.length () > KEY_LENGTH_MAX)
+        return false;
+    if (key.charAt (0) == '=')
+        return false;
+    return std::all_of (key.begin (), key.end (), isValidDNSKeyChar);
 }
 
-bool MDNSTXT::insert(const String& key, const void* value, const size_t length, const bool is_binary) {
-    if (!validate(key))
+bool MDNSTXT::insert (const String &key, const void *value, const size_t length, const bool is_binary) {
+    if (! validate (key))
         return false;
-    auto it = std::find_if(_entries.begin(), _entries.end(), [&key](const auto& e) {
-        return e.key.equalsIgnoreCase(key);
+    auto it = std::find_if (_entries.begin (), _entries.end (), [&key] (const auto &e) {
+        return e.key.equalsIgnoreCase (key);
     });
-    if (it != _entries.end()) {
-        it->value.assign(static_cast<const uint8_t*>(value), static_cast<const uint8_t*>(value) + length);
+    if (it != _entries.end ()) {
+        it->value.assign (static_cast<const uint8_t *> (value), static_cast<const uint8_t *> (value) + length);
         it->binary = is_binary;
     } else
-        _entries.push_back({ key, std::vector<uint8_t>(static_cast<const uint8_t*>(value), static_cast<const uint8_t*>(value) + length), is_binary });
+        _entries.push_back ({ key, std::vector<uint8_t> (static_cast<const uint8_t *> (value), static_cast<const uint8_t *> (value) + length), is_binary });
     length_valid = false;
     return true;
 }
-uint16_t MDNSTXT::length() const {
-    if (!length_valid) {
-        cached_length = std::accumulate(_entries.begin(), _entries.end(), 0U, [](size_t sum, const auto& entry) {
-            const size_t value_len = entry.value.empty() ? 0 : (entry.binary ? Base64::length(entry.value.size()) : entry.value.size());
-            return sum + 1 + entry.key.length() + (value_len ? value_len + 1 : 0);    // length byte
+uint16_t MDNSTXT::length () const {
+    if (! length_valid) {
+        cached_length = std::accumulate (_entries.begin (), _entries.end (), 0U, [] (size_t sum, const auto &entry) {
+            const size_t value_len = entry.value.empty () ? 0 : (entry.binary ? Base64::length (entry.value.size ()) : entry.value.size ());
+            return sum + 1 + entry.key.length () + (value_len ? value_len + 1 : 0);    // length byte
         });
         length_valid = true;
     }
     return cached_length;
 }
-String MDNSTXT::toString() const {
+String MDNSTXT::toString () const {
     String result;
-    for (const auto& entry : _entries) {
-        result += (result.isEmpty() ? "" : ",") + entry.key;
+    for (const auto &entry : _entries) {
+        result += (result.isEmpty () ? "" : ",") + entry.key;
         String encoded;
-        encoded.reserve(TOTAL_LENGTH_MAX + 1);
-        if (!entry.value.empty()) {
+        encoded.reserve (TOTAL_LENGTH_MAX + 1);
+        if (! entry.value.empty ()) {
             encoded += '=';
             if (entry.binary) {
-                std::vector<char> buffer(Base64::length(entry.value.size()) + 1);
-                if (Base64::encode(entry.value.data(), entry.value.size(), buffer.data(), buffer.size()))
-                    encoded += String(buffer.data());
+                std::vector<char> buffer (Base64::length (entry.value.size ()) + 1);
+                if (Base64::encode (entry.value.data (), entry.value.size (), buffer.data (), buffer.size ()))
+                    encoded += String (buffer.data ());
             } else
-                encoded += String(reinterpret_cast<const char*>(entry.value.data()), entry.value.size());
+                encoded += String (reinterpret_cast<const char *> (entry.value.data ()), entry.value.size ());
         }
     }
     return result;
@@ -532,9 +547,9 @@ String MDNSTXT::toString() const {
 
 // -----------------------------------------------------------------------------------------------
 
-static inline size_t _sizeofDNSName(const String& name);
-static inline size_t _sizeofServiceRecord(const MDNS::Service& service, const String& fqhn);
-static inline size_t _sizeofCompleteRecord(const MDNS::Services& services, const MDNS::ServiceTypes& serviceTypes, const String& fqhn);
+static inline size_t _sizeofDNSName (const String &name);
+static inline size_t _sizeofServiceRecord (const MDNS::Service &service, const String &fqhn);
+static inline size_t _sizeofCompleteRecord (const MDNS::Services &services, const MDNS::ServiceTypes &serviceTypes, const String &fqhn);
 
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
@@ -542,57 +557,63 @@ static inline size_t _sizeofCompleteRecord(const MDNS::Services& services, const
 #ifdef DEBUG_MDNS_UDP_READ
 static const size_t udp_read_buffer_maximum__global = DNS_PACKET_LENGTH_MAX;
 static size_t _udp_read_buffer_length__global = 0;
-static uint8_t _udp_read_buffer_content__global[udp_read_buffer_maximum__global];
+static uint8_t _udp_read_buffer_content__global [udp_read_buffer_maximum__global];
 #define DEBUG_MDNS_UDP_READ_RESET() _udp_read_buffer_length__global = 0
-#define DEBUG_MDNS_UDP_READ_DUMP() \
-    if (_udp_read_buffer_length__global > 0) parsePacket("UDP_READ", _udp_read_buffer_content__global, _udp_read_buffer_length__global);
-#define DEBUG_MDNS_UDP_READ_BYTE(x) \
-    if (_udp_read_buffer_length__global < udp_read_buffer_maximum__global) _udp_read_buffer_content__global[_udp_read_buffer_length__global++] = x;
+#define DEBUG_MDNS_UDP_READ_DUMP()           \
+    if (_udp_read_buffer_length__global > 0) \
+        parsePacket ("UDP_READ", _udp_read_buffer_content__global, _udp_read_buffer_length__global);
+#define DEBUG_MDNS_UDP_READ_BYTE(x)                                        \
+    if (_udp_read_buffer_length__global < udp_read_buffer_maximum__global) \
+        _udp_read_buffer_content__global [_udp_read_buffer_length__global++] = x;
 #else
 #define DEBUG_MDNS_UDP_READ_RESET()
 #define DEBUG_MDNS_UDP_READ_DUMP()
 #define DEBUG_MDNS_UDP_READ_BYTE(x)
 #endif
 
-static UDP* _udp_read_handler__global = nullptr;
+static UDP *_udp_read_handler__global = nullptr;
 static uint16_t _udp_read_offset__global = 0, _udp_read_length__global = 0;
-#define UDP_READ_START() _udp->beginMulticast(MDNS_ADDR_MULTICAST, MDNS_PORT)
-#define UDP_READ_STOP() _udp->stop()
-#define UDP_READ_BEGIN(u) \
-    do { \
-        _udp_read_handler__global = u; \
-        _udp_read_offset__global = 0; \
-        _udp_read_length__global = _udp_read_handler__global->parsePacket(); \
-        DEBUG_MDNS_UDP_READ_RESET(); \
+#define UDP_READ_START() _udp->beginMulticast (MDNS_ADDR_MULTICAST, MDNS_PORT)
+#define UDP_READ_STOP()  _udp->stop ()
+#define UDP_READ_BEGIN(u)                                                     \
+    do {                                                                      \
+        _udp_read_handler__global = u;                                        \
+        _udp_read_offset__global = 0;                                         \
+        _udp_read_length__global = _udp_read_handler__global->parsePacket (); \
+        DEBUG_MDNS_UDP_READ_RESET ();                                         \
     } while (0)
-#define UDP_READ_END() \
-    do { \
-        _udp_read_handler__global->flush(); \
-        DEBUG_MDNS_UDP_READ_DUMP(); \
+#define UDP_READ_END()                       \
+    do {                                     \
+        _udp_read_handler__global->flush (); \
+        DEBUG_MDNS_UDP_READ_DUMP ();         \
     } while (0)
-#define UDP_READ_AVAILABLE() (_udp_read_length__global != static_cast<uint16_t>(0))
-#define UDP_READ_BYTE_OR_FAIL(t, x, y) \
-    { \
-        if (_udp_read_offset__global >= _udp_read_length__global) y; \
-        const int _udp_byte = _udp_read_handler__global->read(); \
-        if (_udp_byte < 0) y; \
-        x = static_cast<t>(_udp_byte); \
-        _udp_read_offset__global++; \
-        DEBUG_MDNS_UDP_READ_BYTE(static_cast<uint8_t>(_udp_byte)); \
+#define UDP_READ_AVAILABLE() (_udp_read_length__global != static_cast<uint16_t> (0))
+#define UDP_READ_BYTE_OR_FAIL(t, x, y)                               \
+    {                                                                \
+        if (_udp_read_offset__global >= _udp_read_length__global)    \
+            y;                                                       \
+        const int _udp_byte = _udp_read_handler__global->read ();    \
+        if (_udp_byte < 0)                                           \
+            y;                                                       \
+        x = static_cast<t> (_udp_byte);                              \
+        _udp_read_offset__global++;                                  \
+        DEBUG_MDNS_UDP_READ_BYTE (static_cast<uint8_t> (_udp_byte)); \
     }
-#define UDP_SKIP_BYTE_OR_FAIL(y) \
-    { \
-        if (_udp_read_offset__global >= _udp_read_length__global) y; \
-        const int _udp_byte = _udp_read_handler__global->read(); \
-        if (_udp_byte < 0) y; \
-        _udp_read_offset__global++; \
-        DEBUG_MDNS_UDP_READ_BYTE(static_cast<uint8_t>(_udp_byte)); \
+#define UDP_SKIP_BYTE_OR_FAIL(y)                                     \
+    {                                                                \
+        if (_udp_read_offset__global >= _udp_read_length__global)    \
+            y;                                                       \
+        const int _udp_byte = _udp_read_handler__global->read ();    \
+        if (_udp_byte < 0)                                           \
+            y;                                                       \
+        _udp_read_offset__global++;                                  \
+        DEBUG_MDNS_UDP_READ_BYTE (static_cast<uint8_t> (_udp_byte)); \
     }
-#define UDP_READ_PEEK() _udp_read_handler__global->peek()
-#define UDP_READ_LENGTH() _udp_read_length__global
-#define UDP_READ_OFFSET() _udp_read_offset__global
-#define UDP_READ_PEER_ADDR() _udp_read_handler__global->remoteIP()
-#define UDP_READ_PEER_PORT() _udp_read_handler__global->remotePort()
+#define UDP_READ_PEEK()      _udp_read_handler__global->peek ()
+#define UDP_READ_LENGTH()    _udp_read_length__global
+#define UDP_READ_OFFSET()    _udp_read_offset__global
+#define UDP_READ_PEER_ADDR() _udp_read_handler__global->remoteIP ()
+#define UDP_READ_PEER_PORT() _udp_read_handler__global->remotePort ()
 
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
@@ -600,15 +621,18 @@ static uint16_t _udp_read_offset__global = 0, _udp_read_length__global = 0;
 #ifdef DEBUG_MDNS_UDP_WRITE
 static const size_t _udp_write_buffer_maximum__global = DNS_PACKET_LENGTH_MAX;
 static size_t _udp_write_buffer_length__global = 0;
-static uint8_t _udp_write_buffer_content__global[_udp_write_buffer_maximum__global];
+static uint8_t _udp_write_buffer_content__global [_udp_write_buffer_maximum__global];
 #define DEBUG_MDNS_UDP_WRITE_RESET() _udp_write_buffer_length__global = 0
-#define DEBUG_MDNS_UDP_WRITE_DUMP() \
-    if (_udp_write_buffer_length__global > 0) parsePacket("UDP_WRITE", _udp_write_buffer_content__global, _udp_write_buffer_length__global);
-#define DEBUG_MDNS_UDP_WRITE_BYTE(x) \
-    if (_udp_write_buffer_length__global < _udp_write_buffer_maximum__global) _udp_write_buffer_content__global[_udp_write_buffer_length__global++] = x;
-#define DEBUG_MDNS_UDP_WRITE_DATA(x, y) \
-    for (auto yy = 0; yy < y; yy++) { \
-        if (_udp_write_buffer_length__global < _udp_write_buffer_maximum__global) _udp_write_buffer_content__global[_udp_write_buffer_length__global++] = x[yy]; \
+#define DEBUG_MDNS_UDP_WRITE_DUMP()           \
+    if (_udp_write_buffer_length__global > 0) \
+        parsePacket ("UDP_WRITE", _udp_write_buffer_content__global, _udp_write_buffer_length__global);
+#define DEBUG_MDNS_UDP_WRITE_BYTE(x)                                          \
+    if (_udp_write_buffer_length__global < _udp_write_buffer_maximum__global) \
+        _udp_write_buffer_content__global [_udp_write_buffer_length__global++] = x;
+#define DEBUG_MDNS_UDP_WRITE_DATA(x, y)                                                      \
+    for (auto yy = 0; yy < y; yy++) {                                                        \
+        if (_udp_write_buffer_length__global < _udp_write_buffer_maximum__global)            \
+            _udp_write_buffer_content__global [_udp_write_buffer_length__global++] = x [yy]; \
     }
 #else
 #define DEBUG_MDNS_UDP_WRITE_RESET()
@@ -618,28 +642,28 @@ static uint8_t _udp_write_buffer_content__global[_udp_write_buffer_maximum__glob
 #endif
 
 static uint16_t _udp_write_offset__global = 0;
-#define UDP_WRITE_BEGIN() \
-    do { \
-        _udp->beginPacket(MDNS_ADDR_MULTICAST, MDNS_PORT); \
-        _udp_write_offset__global = 0; \
-        DEBUG_MDNS_UDP_WRITE_RESET(); \
+#define UDP_WRITE_BEGIN()                                   \
+    do {                                                    \
+        _udp->beginPacket (MDNS_ADDR_MULTICAST, MDNS_PORT); \
+        _udp_write_offset__global = 0;                      \
+        DEBUG_MDNS_UDP_WRITE_RESET ();                      \
     } while (0)
-#define UDP_WRITE_END() \
-    do { \
-        _udp->endPacket(); \
-        DEBUG_MDNS_UDP_WRITE_DUMP(); \
+#define UDP_WRITE_END()               \
+    do {                              \
+        _udp->endPacket ();           \
+        DEBUG_MDNS_UDP_WRITE_DUMP (); \
     } while (0)
-#define UDP_WRITE_BYTE(x) \
-    do { \
-        _udp->write(x); \
-        _udp_write_offset__global++; \
-        DEBUG_MDNS_UDP_WRITE_BYTE((x)); \
+#define UDP_WRITE_BYTE(x)                \
+    do {                                 \
+        _udp->write (x);                 \
+        _udp_write_offset__global++;     \
+        DEBUG_MDNS_UDP_WRITE_BYTE ((x)); \
     } while (0)
-#define UDP_WRITE_DATA(x, y) \
-    do { \
-        _udp->write(x, y); \
-        _udp_write_offset__global += (y); \
-        DEBUG_MDNS_UDP_WRITE_DATA((x), (y)); \
+#define UDP_WRITE_DATA(x, y)                  \
+    do {                                      \
+        _udp->write (x, y);                   \
+        _udp_write_offset__global += (y);     \
+        DEBUG_MDNS_UDP_WRITE_DATA ((x), (y)); \
     } while (0)
 #define UDP_WRITE_OFFSET() _udp_write_offset__global
 
@@ -647,164 +671,169 @@ static uint16_t _udp_write_offset__global = 0;
 // -----------------------------------------------------------------------------------------------
 
 // a mess mixed with the specific handlers, this and the Responder need more rework
-template<typename Handler>
+template <typename Handler>
 struct UDP_READ_PACKET_CLASS {
-    Handler& _handler;
-    const Header& _header;
+    Handler &_handler;
+    const Header &_header;
 
-    UDP_READ_PACKET_CLASS(Handler& handler, const Header& header)
-        : _handler(handler), _header(header){};
-    ~UDP_READ_PACKET_CLASS() {
-        UDP_READ_END();
+    UDP_READ_PACKET_CLASS (Handler &handler, const Header &header) :
+        _handler (handler),
+        _header (header) { };
+    ~UDP_READ_PACKET_CLASS () {
+        UDP_READ_END ();
     }
 
-    bool _extractLabels(const DNSSection section, uint16_t* consumed = nullptr) {
+    bool _extractLabels (const DNSSection section, uint16_t *consumed = nullptr) {
         uint8_t size = 0, comp;
         uint16_t used = 0;
         do {
-            const uint16_t offset = UDP_READ_OFFSET();
-            UDP_READ_BYTE_OR_FAIL(uint8_t, size, break);
+            const uint16_t offset = UDP_READ_OFFSET ();
+            UDP_READ_BYTE_OR_FAIL (uint8_t, size, break);
             used++;
             if ((size & DNS_COMPRESS_MARK) == DNS_COMPRESS_MARK) {
-                UDP_READ_BYTE_OR_FAIL(uint8_t, comp, return false);
+                UDP_READ_BYTE_OR_FAIL (uint8_t, comp, return false);
                 used++;
-                const uint16_t offs = ((static_cast<uint16_t>(size) & ~DNS_COMPRESS_MARK) << 8) | static_cast<uint16_t>(comp);
-                _handler.process_iscompressed(offs, section, offset);
+                const uint16_t offs = ((static_cast<uint16_t> (size) & ~DNS_COMPRESS_MARK) << 8) | static_cast<uint16_t> (comp);
+                _handler.process_iscompressed (offs, section, offset);
 
             } else if (size > 0) {
                 String name;
-                name.reserve(size + 1);
+                name.reserve (size + 1);
                 for (auto z = 0; z < size; z++) {
                     char c;
-                    UDP_READ_BYTE_OR_FAIL(char, c, return false);
+                    UDP_READ_BYTE_OR_FAIL (char, c, return false);
                     used++;
                     name += c;
                 }
-                _handler.process_nocompressed(name, section, offset);
+                _handler.process_nocompressed (name, section, offset);
             }
         } while (size > 0 && size <= DNS_LABEL_LENGTH_MAX);
-        if (consumed != nullptr) (*consumed) += used;
+        if (consumed != nullptr)
+            (*consumed) += used;
         return true;
     }
-    bool _extractControl(uint8_t control[4]) {
+    bool _extractControl (uint8_t control [4]) {
         for (auto z = 0; z < 4; z++)
-            UDP_READ_BYTE_OR_FAIL(uint8_t, control[z], return false);
+            UDP_READ_BYTE_OR_FAIL (uint8_t, control [z], return false);
         return true;
     }
-    bool _passoverTTL(void) {
+    bool _passoverTTL (void) {
         for (auto i = 0; i < 4; i++)
-            UDP_SKIP_BYTE_OR_FAIL(return false);
+            UDP_SKIP_BYTE_OR_FAIL (return false);
         return true;
     }
-    bool _extractLength(uint16_t* length) {
+    bool _extractLength (uint16_t *length) {
         uint8_t b1, b2;
-        UDP_READ_BYTE_OR_FAIL(uint8_t, b1, return false);
-        UDP_READ_BYTE_OR_FAIL(uint8_t, b2, return false);
-        (*length) = (static_cast<uint16_t>(b1) << 8) | static_cast<uint16_t>(b2);
+        UDP_READ_BYTE_OR_FAIL (uint8_t, b1, return false);
+        UDP_READ_BYTE_OR_FAIL (uint8_t, b2, return false);
+        (*length) = (static_cast<uint16_t> (b1) << 8) | static_cast<uint16_t> (b2);
         return true;
     }
-    bool _passbySRVDetails(uint16_t* consumed = nullptr) {
+    bool _passbySRVDetails (uint16_t *consumed = nullptr) {
         for (auto i = 0; i < 6; i++)    // priority, weight, port
-            UDP_SKIP_BYTE_OR_FAIL(return false);
-        if (consumed) (*consumed) += 6;
+            UDP_SKIP_BYTE_OR_FAIL (return false);
+        if (consumed)
+            (*consumed) += 6;
         return true;
     }
-    bool _passbyMXDetails(uint16_t* consumed = nullptr) {
+    bool _passbyMXDetails (uint16_t *consumed = nullptr) {
         for (auto i = 0; i < 2; i++)    // preference
-            UDP_SKIP_BYTE_OR_FAIL(return false);
-        if (consumed) (*consumed) += 2;
+            UDP_SKIP_BYTE_OR_FAIL (return false);
+        if (consumed)
+            (*consumed) += 2;
         return true;
     }
-    bool _passbySOADetails(uint16_t* consumed = nullptr) {
+    bool _passbySOADetails (uint16_t *consumed = nullptr) {
         for (auto i = 0; i < 20; i++)    // 5 x 32 bit values
-            UDP_SKIP_BYTE_OR_FAIL(return false);
-        if (consumed) (*consumed) += 20;
+            UDP_SKIP_BYTE_OR_FAIL (return false);
+        if (consumed)
+            (*consumed) += 20;
         return true;
     }
 
-    bool process(void) {
+    bool process (void) {
 
-        _handler.begin();
+        _handler.begin ();
 
         const size_t qd = _header.queryCount, an = qd + _header.answerCount, ns = an + _header.authorityCount, ad = ns + _header.additionalCount;
 
         for (size_t i = 0; i < ad; i++) {
 
-            const DNSSection section = getSection(i, qd, an, ns);
+            const DNSSection section = getSection (i, qd, an, ns);
 
-            DEBUG_PRINTF("MDNS: packet: %s[%d/%u]: ", getSectionName(section), i + 1, ad);
+            DEBUG_PRINTF ("MDNS: packet: %s[%d/%u]: ", getSectionName (section), i + 1, ad);
 
-            _handler.process_begin(section, UDP_READ_OFFSET());
+            _handler.process_begin (section, UDP_READ_OFFSET ());
 
-            if (!_extractLabels(section))
+            if (! _extractLabels (section))
                 return false;
-            uint8_t control[4];
-            if (!_extractControl(control))
+            uint8_t control [4];
+            if (! _extractControl (control))
                 return false;
-            const uint16_t type = (static_cast<uint16_t>(control[0]) << 8) | static_cast<uint16_t>(control[1]);
+            const uint16_t type = (static_cast<uint16_t> (control [0]) << 8) | static_cast<uint16_t> (control [1]);
 
-            _handler.process_update(section, control);
+            _handler.process_update (section, control);
 
-            const String name = _handler.name();
-            DEBUG_PRINTF("<%s> [%s] (%s)\n", name.c_str(), parseControl(control).c_str(), getSectionName(section));
+            const String name = _handler.name ();
+            DEBUG_PRINTF ("<%s> [%s] (%s)\n", name.c_str (), parseControl (control).c_str (), getSectionName (section));
 
             if (section != DNSSection::Query) {
 
-                if (!_passoverTTL())
+                if (! _passoverTTL ())
                     return false;
                 uint16_t length, consumed = 0;
-                if (!_extractLength(&length))
+                if (! _extractLength (&length))
                     return false;
 
                 switch (type) {
-                    case DNS_RECORD_CNAME:                                               // possible
-                    case DNS_RECORD_NS:                                                  // unlikely
-                    case DNS_RECORD_PTR:                                                 // typical
-                    case DNS_RECORD_NSEC:                                                // typical
-                        if (consumed < length && !_extractLabels(section, &consumed))    // target
-                            return false;
-                        break;
-                    case DNS_RECORD_SRV:    // typical
-                        if (consumed < length && !_passbySRVDetails(&consumed))
-                            return false;
-                        if (consumed < length && !_extractLabels(section, &consumed))    // target
-                            return false;
-                        break;
-                    case DNS_RECORD_MX:    // possible
-                        if (consumed < length && !_passbyMXDetails(&consumed))
-                            return false;
-                        if (consumed < length && !_extractLabels(section, &consumed))    // exchanger
-                            return false;
-                        break;
-                    case DNS_RECORD_SOA:                                                 // unlikely
-                        if (consumed < length && !_extractLabels(section, &consumed))    // MNAME
-                            return false;
-                        if (consumed < length && !_extractLabels(section, &consumed))    // RNAME
-                            return false;
-                        if (consumed < length && !_passbySOADetails(&consumed))
-                            return false;
-                        break;
+                case DNS_RECORD_CNAME :                                                // possible
+                case DNS_RECORD_NS :                                                   // unlikely
+                case DNS_RECORD_PTR :                                                  // typical
+                case DNS_RECORD_NSEC :                                                 // typical
+                    if (consumed < length && ! _extractLabels (section, &consumed))    // target
+                        return false;
+                    break;
+                case DNS_RECORD_SRV :    // typical
+                    if (consumed < length && ! _passbySRVDetails (&consumed))
+                        return false;
+                    if (consumed < length && ! _extractLabels (section, &consumed))    // target
+                        return false;
+                    break;
+                case DNS_RECORD_MX :    // possible
+                    if (consumed < length && ! _passbyMXDetails (&consumed))
+                        return false;
+                    if (consumed < length && ! _extractLabels (section, &consumed))    // exchanger
+                        return false;
+                    break;
+                case DNS_RECORD_SOA :                                                  // unlikely
+                    if (consumed < length && ! _extractLabels (section, &consumed))    // MNAME
+                        return false;
+                    if (consumed < length && ! _extractLabels (section, &consumed))    // RNAME
+                        return false;
+                    if (consumed < length && ! _passbySOADetails (&consumed))
+                        return false;
+                    break;
                 }
 
                 while (consumed++ < length)
-                    UDP_SKIP_BYTE_OR_FAIL(return false);
+                    UDP_SKIP_BYTE_OR_FAIL (return false);
             }
 
-            if (section != DNSSection::Query && type != DNS_RECORD_OPT && name.isEmpty())
-                DEBUG_PRINTF("\n**** EMPTY ****\n");
+            if (section != DNSSection::Query && type != DNS_RECORD_OPT && name.isEmpty ())
+                DEBUG_PRINTF ("\n**** EMPTY ****\n");
 
-            _handler.process_end(section, UDP_READ_OFFSET());
+            _handler.process_end (section, UDP_READ_OFFSET ());
         }
 
-        _handler.end();
+        _handler.end ();
 
         return true;
     }
 };
 
 struct NameCollector {
-    MDNS& _mdns;
-    const Header& _header;
+    MDNS &_mdns;
+    const Header &_header;
     //
     using LabelOffset = std::pair<String, uint16_t>;
     using Labels = std::vector<LabelOffset>;
@@ -815,136 +844,138 @@ struct NameCollector {
     using Names = std::vector<Name>;
     Names _names;
     //
-    String _uncompress(const size_t target) const {
-        for (const auto& n : _names)
-            for (const auto& [label, offset] : n.labels)
-                if (target >= offset && target < (offset + label.length()))
-                    return (target == offset) ? label : label.substring(target - offset);
-        DEBUG_PRINTF("*** WARNING: could not uncompress at %u ***\n", target);
-        return String();
+    String _uncompress (const size_t target) const {
+        for (const auto &n : _names)
+            for (const auto &[label, offset] : n.labels)
+                if (target >= offset && target < (offset + label.length ()))
+                    return (target == offset) ? label : label.substring (target - offset);
+        DEBUG_PRINTF ("*** WARNING: could not uncompress at %u ***\n", target);
+        return String ();
     }
-    String _name(const Labels& labels) const {
-        return labels.empty() ? String() : std::accumulate(labels.begin(), labels.end(), String(), [](const String& acc, const LabelOffset& label) {
-            return acc.isEmpty() ? label.first : acc + "." + label.first;
+    String _name (const Labels &labels) const {
+        return labels.empty () ? String () : std::accumulate (labels.begin (), labels.end (), String (), [] (const String &acc, const LabelOffset &label) {
+            return acc.isEmpty () ? label.first : acc + "." + label.first;
         });
     }
     //
-    String name() const {
-        return _names.empty() ? String() : _name(_names.back().labels);
+    String name () const {
+        return _names.empty () ? String () : _name (_names.back ().labels);
     }
-    std::vector<String> names(const DNSSection section = DNSSection::All) const {
+    std::vector<String> names (const DNSSection section = DNSSection::All) const {
         std::vector<String> names;
-        for (const auto& n : _names)
+        for (const auto &n : _names)
             if ((n.section & section) == n.section)
-                names.push_back(_name(n.labels));
+                names.push_back (_name (n.labels));
         return names;
     }
-    virtual void begin() {}
-    virtual void end() {}
-    void process_iscompressed(const uint16_t offs, const DNSSection, const uint16_t current) {
-        _names.back().labels.push_back(LabelOffset(_uncompress(offs), current));
+    virtual void begin () { }
+    virtual void end () { }
+    void process_iscompressed (const uint16_t offs, const DNSSection, const uint16_t current) {
+        _names.back ().labels.push_back (LabelOffset (_uncompress (offs), current));
     }
-    void process_nocompressed(const String& label, const DNSSection, const uint16_t current) {
-        _names.back().labels.push_back(LabelOffset(label, current));
+    void process_nocompressed (const String &label, const DNSSection, const uint16_t current) {
+        _names.back ().labels.push_back (LabelOffset (label, current));
     }
-    void process_begin(const DNSSection section, const uint16_t offset) {
-        _names.push_back({ .section = section, .labels = Labels() });
+    void process_begin (const DNSSection section, const uint16_t offset) {
+        _names.push_back ({ .section = section, .labels = Labels () });
     }
-    void process_update(const DNSSection, const uint8_t[4]) {
+    void process_update (const DNSSection, const uint8_t [4]) {
     }
-    void process_end(const DNSSection, const uint16_t) {
+    void process_end (const DNSSection, const uint16_t) {
     }
-    NameCollector(MDNS& mdns, const Header& header)
-        : _mdns(mdns), _header(header){};
+    NameCollector (MDNS &mdns, const Header &header) :
+        _mdns (mdns),
+        _header (header) { };
 };
 
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-MDNS::MDNS(UDP& udp)
-    : _udp(&udp) {
+MDNS::MDNS (UDP &udp) :
+    _udp (&udp) {
 }
-MDNS::~MDNS() {
-    stop();
+MDNS::~MDNS () {
+    stop ();
 }
 
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-MDNS::Status MDNS::begin(void) {
+MDNS::Status MDNS::begin (void) {
 
-    DEBUG_PRINTF("MDNS: begin\n");
+    DEBUG_PRINTF ("MDNS: begin\n");
 
     return Status::Success;
 }
 
-MDNS::Status MDNS::start(const IPAddress& addr, const String& name, const bool checkForConflicts) {
+MDNS::Status MDNS::start (const IPAddress &addr, const String &name, const bool checkForConflicts) {
 
     _addr = addr;
-    _name = name.isEmpty() ? getMacAddressBase() : name;
+    _name = name.isEmpty () ? getMacAddressBase () : name;
     _fqhn = name + TLD;
-    _arpa = makeReverseArpaName(_addr);
+    _arpa = makeReverseArpaName (_addr);
 
-    if (!_sizeofDNSName(_name)) {
-        DEBUG_PRINTF("MDNS: start: failed, invalid name %s\n", _name.c_str());
+    if (! _sizeofDNSName (_name)) {
+        DEBUG_PRINTF ("MDNS: start: failed, invalid name %s\n", _name.c_str ());
         return Status::InvalidArgument;
     }
 
     Status status = Status::Success;
-    if (!_enabled) {
-        if (!UDP_READ_START())
+    if (! _enabled) {
+        if (! UDP_READ_START ())
             status = Status::Failure;
-        else _enabled = true;
+        else
+            _enabled = true;
     }
 
     if (status != Status::Success)
-        DEBUG_PRINTF("MDNS: start: failed _udp->beginMulticast error=%s, not active\n", toString(status).c_str());
+        DEBUG_PRINTF ("MDNS: start: failed _udp->beginMulticast error=%s, not active\n", toString (status).c_str ());
     else {
-        DEBUG_PRINTF("MDNS: start: active ip=%s, name=%s\n", IPAddress(_addr).toString().c_str(), _fqhn.c_str());
+        DEBUG_PRINTF ("MDNS: start: active ip=%s, name=%s\n", IPAddress (_addr).toString ().c_str (), _fqhn.c_str ());
         if (checkForConflicts) {
             for (auto i = 0; i < DNS_PROBE_COUNT; i++) {
-                _messageSend(XID_DEFAULT, PacketTypeProbe);
-                delay(DNS_PROBE_WAIT_MS);
+                _messageSend (XID_DEFAULT, PacketTypeProbe);
+                delay (DNS_PROBE_WAIT_MS);
             }
-            delay(DNS_PROBE_WAIT_MS);
+            delay (DNS_PROBE_WAIT_MS);
         }
-        _messageSend(XID_DEFAULT, PacketTypeCompleteRecord);
+        _messageSend (XID_DEFAULT, PacketTypeCompleteRecord);
     }
 
     return status;
 }
 
-MDNS::Status MDNS::stop(void) {
+MDNS::Status MDNS::stop (void) {
 
     if (_enabled) {
-        DEBUG_PRINTF("MDNS: stop\n");
+        DEBUG_PRINTF ("MDNS: stop\n");
         // XXX: should send multiple messages 2 seconds apart
-        _messageSend(XID_DEFAULT, PacketTypeCompleteRelease);
-        UDP_READ_STOP();
+        _messageSend (XID_DEFAULT, PacketTypeCompleteRelease);
+        UDP_READ_STOP ();
         _enabled = false;
     }
 
     return Status::Success;
 }
 
-MDNS::Status MDNS::process(void) {
+MDNS::Status MDNS::process (void) {
 
     Status status = Status::Success;
     if (_enabled) {
         auto count = 0;
         do {
             count++;
-        } while ((status = _messageRecv()) == Status::Success);
+        } while ((status = _messageRecv ()) == Status::Success);
 
         if (status == Status::NameConflict)
-            return _conflicted();
+            return _conflicted ();
         if (status != Status::Success && status != Status::TryLater)
-            DEBUG_PRINTF("MDNS: process: failed _messageRecv error=%s\n", toString(status).c_str());
+            DEBUG_PRINTF ("MDNS: process: failed _messageRecv error=%s\n", toString (status).c_str ());
         else if (status == Status::Success || status == Status::TryLater)
-            if ((status = _announce()) != Status::Success)
-                DEBUG_PRINTF("MDNS: process: failed _announce error=%s\n", toString(status).c_str());
+            if ((status = _announce ()) != Status::Success)
+                DEBUG_PRINTF ("MDNS: process: failed _announce error=%s\n", toString (status).c_str ());
         if (count > 1)
-            DEBUG_PRINTF("MDNS: process [%d]\n", count - 1);
+            DEBUG_PRINTF ("MDNS: process [%d]\n", count - 1);
     }
 
     return status;
@@ -953,50 +984,50 @@ MDNS::Status MDNS::process(void) {
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-MDNS::Status MDNS::serviceRecordInsert(const Service::Protocol proto, const uint16_t port, const String& name, const Service::Config& config, const Service::TXT& text) {
+MDNS::Status MDNS::serviceRecordInsert (const Service::Protocol proto, const uint16_t port, const String &name, const Service::Config &config, const Service::TXT &text) {
 
-    DEBUG_PRINTF("MDNS: serviceRecordInsert: proto=%s, port=%u, name=%s, text.length=%d,text=[%s]\n", Service::toString(proto).c_str(), port, name.c_str(), text.length(), text.toString().c_str());
+    DEBUG_PRINTF ("MDNS: serviceRecordInsert: proto=%s, port=%u, name=%s, text.length=%d,text=[%s]\n", Service::toString (proto).c_str (), port, name.c_str (), text.length (), text.toString ().c_str ());
 
-    if (name.isEmpty() || port == 0 || (proto != Service::Protocol::TCP && proto != Service::Protocol::UDP))
+    if (name.isEmpty () || port == 0 || (proto != Service::Protocol::TCP && proto != Service::Protocol::UDP))
         return Status::InvalidArgument;
-    if (_services.size() >= DNS_SERVICE_LENGTH_MAX)
+    if (_services.size () >= DNS_SERVICE_LENGTH_MAX)
         return Status::InvalidArgument;
-    if (!_sizeofDNSName(name))
+    if (! _sizeofDNSName (name))
         return Status::InvalidArgument;
-    if (std::any_of(text.entries().begin(), text.entries().end(), [](const auto& it) {
-            return it.key.length() > Service::TXT::TOTAL_LENGTH_MAX;
+    if (std::any_of (text.entries ().begin (), text.entries ().end (), [] (const auto &it) {
+            return it.key.length () > Service::TXT::TOTAL_LENGTH_MAX;
         }))
         return Status::InvalidArgument;
 
-    Service serviceNew{ .port = port, .proto = proto, .name = name, .config = config, .text = text, ._serv = name.substring(name.lastIndexOf('.') + 1) + protocolPostfix(proto), ._fqsn = name + protocolPostfix(proto) };
+    Service serviceNew { .port = port, .proto = proto, .name = name, .config = config, .text = text, ._serv = name.substring (name.lastIndexOf ('.') + 1) + protocolPostfix (proto), ._fqsn = name + protocolPostfix (proto) };
 
-    if ((sizeof(Header) + _sizeofCompleteRecord(_services, _serviceTypes, _fqhn) + _sizeofServiceRecord(serviceNew, _fqhn)) > DNS_PACKET_LENGTH_SAFE)    // could solve with truncation support
+    if ((sizeof (Header) + _sizeofCompleteRecord (_services, _serviceTypes, _fqhn) + _sizeofServiceRecord (serviceNew, _fqhn)) > DNS_PACKET_LENGTH_SAFE)    // could solve with truncation support
         return Status::OutOfMemory;
 
     try {
-        const auto& service = _services.emplace_back(serviceNew);
-        _serviceTypes.insert(service._serv);
+        const auto &service = _services.emplace_back (serviceNew);
+        _serviceTypes.insert (service._serv);
         if (_enabled)
-            _messageSend(XID_DEFAULT, PacketTypeServiceRecord, &service);
+            _messageSend (XID_DEFAULT, PacketTypeServiceRecord, &service);
         return Status::Success;
-    } catch (const std::bad_alloc&) {
+    } catch (const std::bad_alloc &) {
         return Status::OutOfMemory;
     }
 }
 
-MDNS::Status MDNS::serviceRecordRemove(const Service::Protocol proto, const uint16_t port, const String& name) {
+MDNS::Status MDNS::serviceRecordRemove (const Service::Protocol proto, const uint16_t port, const String &name) {
 
-    DEBUG_PRINTF("MDNS: serviceRecordRemove: proto=%s, port=%u, name=%s\n", Service::toString(proto).c_str(), port, name.c_str());
+    DEBUG_PRINTF ("MDNS: serviceRecordRemove: proto=%s, port=%u, name=%s\n", Service::toString (proto).c_str (), port, name.c_str ());
 
     size_t count = 0;
-    _serviceTypes.clear();
-    std::erase_if(_services, [&](const Service& service) {
-        if (!(service.port == port && service.proto == proto && (name.isEmpty() || service.name == name))) {
-            _serviceTypes.insert(service._serv);
+    _serviceTypes.clear ();
+    std::erase_if (_services, [&] (const Service &service) {
+        if (! (service.port == port && service.proto == proto && (name.isEmpty () || service.name == name))) {
+            _serviceTypes.insert (service._serv);
             return false;
         }
         if (_enabled)
-            _messageSend(XID_DEFAULT, PacketTypeServiceRelease, &service);
+            _messageSend (XID_DEFAULT, PacketTypeServiceRelease, &service);
         count++;
         return true;
     });
@@ -1004,19 +1035,19 @@ MDNS::Status MDNS::serviceRecordRemove(const Service::Protocol proto, const uint
     return count == 0 ? Status::InvalidArgument : Status::Success;
 }
 
-MDNS::Status MDNS::serviceRecordRemove(const String& name) {
+MDNS::Status MDNS::serviceRecordRemove (const String &name) {
 
-    DEBUG_PRINTF("MDNS: serviceRecordRemove: name=%s\n", name.c_str());
+    DEBUG_PRINTF ("MDNS: serviceRecordRemove: name=%s\n", name.c_str ());
 
     size_t count = 0;
-    _serviceTypes.clear();
-    std::erase_if(_services, [&](const Service& service) {
+    _serviceTypes.clear ();
+    std::erase_if (_services, [&] (const Service &service) {
         if (service.name != name) {
-            _serviceTypes.insert(service._serv);
+            _serviceTypes.insert (service._serv);
             return false;
         }
         if (_enabled)
-            _messageSend(XID_DEFAULT, PacketTypeServiceRelease, &service);
+            _messageSend (XID_DEFAULT, PacketTypeServiceRelease, &service);
         count++;
         return true;
     });
@@ -1024,15 +1055,15 @@ MDNS::Status MDNS::serviceRecordRemove(const String& name) {
     return count == 0 ? Status::InvalidArgument : Status::Success;
 }
 
-MDNS::Status MDNS::serviceRecordClear() {
+MDNS::Status MDNS::serviceRecordClear () {
 
-    DEBUG_PRINTF("MDNS: serviceRecordClear\n");
+    DEBUG_PRINTF ("MDNS: serviceRecordClear\n");
 
     if (_enabled)
-        for (const auto& service : _services)
-            _messageSend(XID_DEFAULT, PacketTypeServiceRelease, &service);
-    _services.clear();
-    _serviceTypes.clear();
+        for (const auto &service : _services)
+            _messageSend (XID_DEFAULT, PacketTypeServiceRelease, &service);
+    _services.clear ();
+    _serviceTypes.clear ();
 
     return Status::Success;
 }
@@ -1040,32 +1071,32 @@ MDNS::Status MDNS::serviceRecordClear() {
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-MDNS::Status MDNS::_announce() {
+MDNS::Status MDNS::_announce () {
 
-    if (_enabled && (millis() - _announced) > _announceTime()) {
+    if (_enabled && (millis () - _announced) > _announceTime ()) {
 
-        DEBUG_PRINTF("MDNS: announce: services (%d)\n", _services.size());
+        DEBUG_PRINTF ("MDNS: announce: services (%d)\n", _services.size ());
 
-        _messageSend(XID_DEFAULT, PacketTypeCompleteRecord);
+        _messageSend (XID_DEFAULT, PacketTypeCompleteRecord);
 
-        _announced = millis();
+        _announced = millis ();
     }
     return Status::Success;
 }
 
-MDNS::Status MDNS::_conflicted() {
+MDNS::Status MDNS::_conflicted () {
 
-    DEBUG_PRINTF("MDNS: conflicted: name=%s (will stop and start with new name)\n", _name.c_str());
+    DEBUG_PRINTF ("MDNS: conflicted: name=%s (will stop and start with new name)\n", _name.c_str ());
 
-    stop();
-    return start(_addr, _name + "-" + getMacAddressBase());
+    stop ();
+    return start (_addr, _name + "-" + getMacAddressBase ());
 }
 
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-const char* _checkHeader(const Header& header, const uint16_t packetSize, const int firstByte) {
-    if (packetSize < (sizeof(Header) + (header.queryCount * 6) + (header.authorityCount * 6)))
+const char *_checkHeader (const Header &header, const uint16_t packetSize, const int firstByte) {
+    if (packetSize < (sizeof (Header) + (header.queryCount * 6) + (header.authorityCount * 6)))
         return "packet too small for claimed record counts";
     if (header.opCode > DNS_OPCODE_UPDATE)
         return "invalid opcode";
@@ -1084,15 +1115,15 @@ const char* _checkHeader(const Header& header, const uint16_t packetSize, const 
     return nullptr;
 }
 
-const char* _checkAddress(const IPAddress& addrLocal, const IPAddress& addr) {
-    if (addr[0] == 0 && (addr[1] | addr[2] | addr[3]) == 0)
+const char *_checkAddress (const IPAddress &addrLocal, const IPAddress &addr) {
+    if (addr [0] == 0 && (addr [1] | addr [2] | addr [3]) == 0)
         return "invalid unspecified address (0.0.0.0)";
-    if (addr[0] == 127)
+    if (addr [0] == 127)
         return "invalid loopback address (127.x.x.x)";
-    if (addr[0] == 169 && addr[1] == 254) {    // link-local
-        if (addr[2] == 0 || addr[2] == 255)
+    if (addr [0] == 169 && addr [1] == 254) {    // link-local
+        if (addr [2] == 0 || addr [2] == 255)
             return "invalid link-local broadcast (169.254.0|255.x)";
-        if (!(addrLocal[0] == 169 && addrLocal[1] == 254 && addr[2] == addrLocal[2]))
+        if (! (addrLocal [0] == 169 && addrLocal [1] == 254 && addr [2] == addrLocal [2]))
             return "invalid link-local subnet mismatch";
     }
     return nullptr;
@@ -1100,80 +1131,82 @@ const char* _checkAddress(const IPAddress& addrLocal, const IPAddress& addr) {
 
 // -----------------------------------------------------------------------------------------------
 
-MDNS::Status MDNS::_messageRecv() {
-    const char* detailedError = nullptr;
+MDNS::Status MDNS::_messageRecv () {
+    const char *detailedError = nullptr;
 
-    UDP_READ_BEGIN(_udp);
-    if (!UDP_READ_AVAILABLE())
+    UDP_READ_BEGIN (_udp);
+    if (! UDP_READ_AVAILABLE ())
         return Status::TryLater;
 
-    DEBUG_PRINTF("MDNS: packet: receiving, size=%u\n", UDP_READ_LENGTH());
+    DEBUG_PRINTF ("MDNS: packet: receiving, size=%u\n", UDP_READ_LENGTH ());
 
     Header header;
-    for (auto z = 0; z < sizeof(Header); z++)
-        UDP_READ_BYTE_OR_FAIL(uint8_t, reinterpret_cast<uint8_t*>(&header)[z], goto bad_packet_failed_header);    // should throw
-    header.xid = ntohs(header.xid);
-    header.queryCount = ntohs(header.queryCount);
-    header.answerCount = ntohs(header.answerCount);
-    header.authorityCount = ntohs(header.authorityCount);
-    header.additionalCount = ntohs(header.additionalCount);
+    for (auto z = 0; z < sizeof (Header); z++)
+        UDP_READ_BYTE_OR_FAIL (uint8_t, reinterpret_cast<uint8_t *> (&header) [z], goto bad_packet_failed_header);    // should throw
+    header.xid = ntohs (header.xid);
+    header.queryCount = ntohs (header.queryCount);
+    header.answerCount = ntohs (header.answerCount);
+    header.authorityCount = ntohs (header.authorityCount);
+    header.additionalCount = ntohs (header.additionalCount);
 
-    if ((detailedError = _checkAddress(_addr, UDP_READ_PEER_ADDR())) != nullptr)
+    if ((detailedError = _checkAddress (_addr, UDP_READ_PEER_ADDR ())) != nullptr)
         goto bad_packet_failed_checks;    // should throw
-    if (OPT_DETAILED_CHECKS && (detailedError = _checkHeader(header, UDP_READ_LENGTH(), UDP_READ_PEEK())) != nullptr)
+    if (OPT_DETAILED_CHECKS && (detailedError = _checkHeader (header, UDP_READ_LENGTH (), UDP_READ_PEEK ())) != nullptr)
         goto bad_packet_failed_checks;    // should throw
     if (header.truncated)
-        DEBUG_PRINTF("MDNS: packet: received truncated from %s, but will proceed\n", UDP_READ_PEER_ADDR().toString().c_str());
+        DEBUG_PRINTF ("MDNS: packet: received truncated from %s, but will proceed\n", UDP_READ_PEER_ADDR ().toString ().c_str ());
 
-    if ((header.authorityCount > 0 || header.queryResponse == DNS_QR_RESPONSE) && UDP_READ_PEER_PORT() == MDNS_PORT) {
+    if ((header.authorityCount > 0 || header.queryResponse == DNS_QR_RESPONSE) && UDP_READ_PEER_PORT () == MDNS_PORT) {
 
-        DEBUG_PRINTF("MDNS: packet: checking, %s / %s:%u\n", parseHeader(header).c_str(), UDP_READ_PEER_ADDR().toString().c_str(), UDP_READ_PEER_PORT());
+        DEBUG_PRINTF ("MDNS: packet: checking, %s / %s:%u\n", parseHeader (header).c_str (), UDP_READ_PEER_ADDR ().toString ().c_str (), UDP_READ_PEER_PORT ());
 
-        NameCollector collector(*this, header);
-        UDP_READ_PACKET_CLASS<NameCollector> processor(collector, header);
-        if (!processor.process())
+        NameCollector collector (*this, header);
+        UDP_READ_PACKET_CLASS<NameCollector> processor (collector, header);
+        if (! processor.process ())
             return Status::PacketBad;    // should throw
-        for (const auto& name : collector.names(DNSSection::Answer | DNSSection::Authority | DNSSection::Additional)) {
-            if (name.equalsIgnoreCase(_fqhn))    // XXX should check against services
-                if ((header.authorityCount > 0 && UDP_READ_PEER_ADDR() > _addr) || (header.authorityCount == 0 && header.queryResponse == DNS_QR_RESPONSE)) {
-                    DEBUG_PRINTF("MDNS: conflict detected in probe: %s from %s\n", _fqhn.c_str(), UDP_READ_PEER_ADDR().toString().c_str());
+        for (const auto &name : collector.names (DNSSection::Answer | DNSSection::Authority | DNSSection::Additional)) {
+            if (name.equalsIgnoreCase (_fqhn))    // XXX should check against services
+                if ((header.authorityCount > 0 && UDP_READ_PEER_ADDR () > _addr) || (header.authorityCount == 0 && header.queryResponse == DNS_QR_RESPONSE)) {
+                    DEBUG_PRINTF ("MDNS: conflict detected in probe: %s from %s\n", _fqhn.c_str (), UDP_READ_PEER_ADDR ().toString ().c_str ());
                     return Status::NameConflict;    // should throw
                 }
         }
 
-    } else if (header.queryResponse == DNS_QR_QUERY && header.opCode == DNS_OPCODE_QUERY && UDP_READ_PEER_PORT() == MDNS_PORT) {
+    } else if (header.queryResponse == DNS_QR_QUERY && header.opCode == DNS_OPCODE_QUERY && UDP_READ_PEER_PORT () == MDNS_PORT) {
 
-        DEBUG_PRINTF("MDNS: packet: processing, %s / %s:%u\n", parseHeader(header).c_str(), UDP_READ_PEER_ADDR().toString().c_str(), UDP_READ_PEER_PORT());
+        DEBUG_PRINTF ("MDNS: packet: processing, %s / %s:%u\n", parseHeader (header).c_str (), UDP_READ_PEER_ADDR ().toString ().c_str (), UDP_READ_PEER_PORT ());
 
         /////////////////////////////////////////////
         /////////////////////////////////////////////
 
         struct Responder {
-            MDNS& _mdns;
-            const Header& _header;
+            MDNS &_mdns;
+            const Header &_header;
             //
             // this is all horrible and brittle and needs replacement, but is getting there ...
             const size_t recordsLengthStatic, recordsLength;
             struct _matcher_t {
-                const char* name;
+                const char *name;
                 int length;
                 int match = 1;
                 uint16_t position = 0;
                 bool requested = false, unsupported = false;
             };
             std::vector<_matcher_t> recordsMatcherTop, recordsMatcherEach;
-            uint16_t _starting{};
-            uint8_t _control[4]{};
+            uint16_t _starting {};
+            uint8_t _control [4] {};
             //
-            int __matchStringPart(const char** pCmpStr, int* pCmpLen, const uint8_t* data, const int dataLen) {
-                const auto _memcmp_caseinsensitive = [](const char* a, const unsigned char* b, const int l) -> int {
+            int __matchStringPart (const char **pCmpStr, int *pCmpLen, const uint8_t *data, const int dataLen) {
+                const auto _memcmp_caseinsensitive = [] (const char *a, const unsigned char *b, const int l) -> int {
                     for (auto i = 0; i < l; i++) {
-                        if (tolower(a[i]) < tolower(b[i])) return -1;
-                        if (tolower(a[i]) > tolower(b[i])) return 1;
+                        if (tolower (a [i]) < tolower (b [i]))
+                            return -1;
+                        if (tolower (a [i]) > tolower (b [i]))
+                            return 1;
                     }
                     return 0;
                 };
-                int matches = (*pCmpLen >= dataLen) ? 1 & (_memcmp_caseinsensitive(*pCmpStr, data, dataLen) == 0) : 0;
+                int matches = (*pCmpLen >= dataLen) ? 1 & (_memcmp_caseinsensitive (*pCmpStr, data, dataLen) == 0) : 0;
                 *pCmpStr += dataLen;
                 *pCmpLen -= dataLen;
                 if ('.' == **pCmpStr)
@@ -1182,134 +1215,142 @@ MDNS::Status MDNS::_messageRecv() {
             };
             //
 
-            String name() const {
+            String name () const {
                 return "UNSUPPORTED";
             }
-            void process_iscompressed(const uint16_t offs, const DNSSection section, const uint16_t) {
-                if (section != DNSSection::Query) return;
-                DEBUG_PRINTF("(%04X)", offs);
-                for (auto& m : recordsMatcherEach)
+            void process_iscompressed (const uint16_t offs, const DNSSection section, const uint16_t) {
+                if (section != DNSSection::Query)
+                    return;
+                DEBUG_PRINTF ("(%04X)", offs);
+                for (auto &m : recordsMatcherEach)
                     if (m.position && m.position != offs)
                         m.match = 0;
             };
-            void process_nocompressed(const String& name, const DNSSection section, const uint16_t) {
-                if (section != DNSSection::Query) return;
-                DEBUG_PRINTF("[%s]", name.c_str());
-                for (auto& m : recordsMatcherEach)
-                    if (!m.requested && m.match)
-                        m.match &= __matchStringPart(&m.name, &m.length, reinterpret_cast<const uint8_t*>(name.c_str()), static_cast<int>(name.length()));
+            void process_nocompressed (const String &name, const DNSSection section, const uint16_t) {
+                if (section != DNSSection::Query)
+                    return;
+                DEBUG_PRINTF ("[%s]", name.c_str ());
+                for (auto &m : recordsMatcherEach)
+                    if (! m.requested && m.match)
+                        m.match &= __matchStringPart (&m.name, &m.length, reinterpret_cast<const uint8_t *> (name.c_str ()), static_cast<int> (name.length ()));
             };
-            void process_begin(const DNSSection section, const uint16_t starting) {
-                if (section != DNSSection::Query) return;
+            void process_begin (const DNSSection section, const uint16_t starting) {
+                if (section != DNSSection::Query)
+                    return;
                 _starting = starting;
             }
-            void process_update(const DNSSection section, const uint8_t control[4]) {
-                if (section != DNSSection::Query) return;
-                memcpy(_control, control, sizeof(_control));
+            void process_update (const DNSSection section, const uint8_t control [4]) {
+                if (section != DNSSection::Query)
+                    return;
+                memcpy (_control, control, sizeof (_control));
             }
-            void process_end(const DNSSection section, const uint16_t) {
-                if (section != DNSSection::Query) return;
+            void process_end (const DNSSection section, const uint16_t) {
+                if (section != DNSSection::Query)
+                    return;
                 size_t r = 0;
-                for (auto& m : recordsMatcherEach) {
-                    if (!m.requested && m.match && !m.length) {
-                        if (!m.position)
+                for (auto &m : recordsMatcherEach) {
+                    if (! m.requested && m.match && ! m.length) {
+                        if (! m.position)
                             m.position = _starting;
-                        if (_control[0] == DNS_RECORD_HI && (_control[2] == DNS_CACHE_NO_FLUSH || _control[2] == DNS_CACHE_FLUSH) && _control[3] == DNS_CLASS_IN) {
+                        if (_control [0] == DNS_RECORD_HI && (_control [2] == DNS_CACHE_NO_FLUSH || _control [2] == DNS_CACHE_FLUSH) && _control [3] == DNS_CLASS_IN) {
                             if (r == 0) {    // Query for our hostname
-                                if (_control[1] == DNS_RECORD_A)
+                                if (_control [1] == DNS_RECORD_A)
                                     m.requested = true;
                                 else
                                     m.unsupported = true;
                             } else if (r == 1) {    // Query for our address
-                                if (_control[1] == DNS_RECORD_PTR)
+                                if (_control [1] == DNS_RECORD_PTR)
                                     m.requested = true;
                                 else
                                     m.unsupported = true;
                             } else {    // Query for our service
-                                if (_control[1] == DNS_RECORD_PTR || _control[1] == DNS_RECORD_TXT || _control[1] == DNS_RECORD_SRV)
+                                if (_control [1] == DNS_RECORD_PTR || _control [1] == DNS_RECORD_TXT || _control [1] == DNS_RECORD_SRV)
                                     m.requested = true;
                                 else
                                     m.unsupported = true;
                             }
                         }
                     }
-                    recordsMatcherTop[r].requested = m.requested;
-                    recordsMatcherTop[r].unsupported = m.unsupported;
+                    recordsMatcherTop [r].requested = m.requested;
+                    recordsMatcherTop [r].unsupported = m.unsupported;
                     r++;
                 }
                 recordsMatcherEach = recordsMatcherTop;
             };
 
-            void begin() {
+            void begin () {
                 size_t j = 0;
                 // XXX should build once and cache ... and update each time service name / etc is changed
-                recordsMatcherTop[j].name = _mdns._fqhn.c_str(), recordsMatcherTop[j].length = _mdns._fqhn.length(), j++;
-                recordsMatcherTop[j].name = _mdns._arpa.c_str(), recordsMatcherTop[j].length = _mdns._arpa.length(), j++;
-                recordsMatcherTop[j].name = SERVICE_SD__fqsn, recordsMatcherTop[j].length = strlen(SERVICE_SD__fqsn), j++;
-                for (const auto& r : _mdns._services)    // XXX should only include unique r._serv ...
-                    recordsMatcherTop[j].name = r._serv.c_str(), recordsMatcherTop[j].length = r._serv.length(), j++;
-                    //
+                recordsMatcherTop [j].name = _mdns._fqhn.c_str (), recordsMatcherTop [j].length = _mdns._fqhn.length (), j++;
+                recordsMatcherTop [j].name = _mdns._arpa.c_str (), recordsMatcherTop [j].length = _mdns._arpa.length (), j++;
+                recordsMatcherTop [j].name = SERVICE_SD__fqsn, recordsMatcherTop [j].length = strlen (SERVICE_SD__fqsn), j++;
+                for (const auto &r : _mdns._services)    // XXX should only include unique r._serv ...
+                    recordsMatcherTop [j].name = r._serv.c_str (), recordsMatcherTop [j].length = r._serv.length (), j++;
+                //
 #ifdef DEBUG_MDNS
-                for (const auto& m : recordsMatcherTop)
-                    DEBUG_PRINTF("MDNS: packet: processing, matching[]: <%s>: %d/%d/%d\n", m.name, m.match, m.length, m.position);
+                for (const auto &m : recordsMatcherTop)
+                    DEBUG_PRINTF ("MDNS: packet: processing, matching[]: <%s>: %d/%d/%d\n", m.name, m.match, m.length, m.position);
 #endif
                 recordsMatcherEach = recordsMatcherTop;
             };
-            void end() {
+            void end () {
                 // XXX should coaescle into single response(s)
                 // XXX should only have unique service names and match from that
-                if (recordsMatcherTop[0].unsupported || recordsMatcherTop[1].unsupported || recordsMatcherTop[2].unsupported) {
-                    DEBUG_PRINTF("MDNS: packet: processing, negated[%d/%d/%d]\n", recordsMatcherTop[0].unsupported, recordsMatcherTop[1].unsupported, recordsMatcherTop[2].unsupported);
-                    _mdns._messageSend(_header.xid, PacketTypeNextSecure);
+                if (recordsMatcherTop [0].unsupported || recordsMatcherTop [1].unsupported || recordsMatcherTop [2].unsupported) {
+                    DEBUG_PRINTF ("MDNS: packet: processing, negated[%d/%d/%d]\n", recordsMatcherTop [0].unsupported, recordsMatcherTop [1].unsupported, recordsMatcherTop [2].unsupported);
+                    _mdns._messageSend (_header.xid, PacketTypeNextSecure);
                 }
-                if (recordsMatcherTop[0].requested) {
-                    DEBUG_PRINTF("MDNS: packet: processing, matched[NAME]: %s\n", recordsMatcherTop[0].name);
-                    _mdns._messageSend(_header.xid, PacketTypeAddressRecord);
+                if (recordsMatcherTop [0].requested) {
+                    DEBUG_PRINTF ("MDNS: packet: processing, matched[NAME]: %s\n", recordsMatcherTop [0].name);
+                    _mdns._messageSend (_header.xid, PacketTypeAddressRecord);
                 }
-                if (recordsMatcherTop[1].requested) {
-                    DEBUG_PRINTF("MDNS: packet: processing, matched[ADDR]: %s\n", recordsMatcherTop[1].name);
-                    _mdns._messageSend(_header.xid, PacketTypeAddressRecord);
+                if (recordsMatcherTop [1].requested) {
+                    DEBUG_PRINTF ("MDNS: packet: processing, matched[ADDR]: %s\n", recordsMatcherTop [1].name);
+                    _mdns._messageSend (_header.xid, PacketTypeAddressRecord);
                 }
-                if (recordsMatcherTop[2].requested) {
-                    DEBUG_PRINTF("MDNS: packet: processing, matched[DISC]: %s\n", recordsMatcherTop[2].name);
-                    _mdns._messageSend(_header.xid, PacketTypeCompleteRecord);
+                if (recordsMatcherTop [2].requested) {
+                    DEBUG_PRINTF ("MDNS: packet: processing, matched[DISC]: %s\n", recordsMatcherTop [2].name);
+                    _mdns._messageSend (_header.xid, PacketTypeCompleteRecord);
                 } else {
                     size_t mi = 0;
-                    for (const auto& r : _mdns._services) {
-                        const auto& m = recordsMatcherTop[mi + recordsLengthStatic];
+                    for (const auto &r : _mdns._services) {
+                        const auto &m = recordsMatcherTop [mi + recordsLengthStatic];
                         if (m.requested) {
-                            DEBUG_PRINTF("MDNS: packet: processing, matched[SERV:%d]: %s\n", mi, m.name);
-                            _mdns._messageSend(_header.xid, PacketTypeServiceRecord, &r);
+                            DEBUG_PRINTF ("MDNS: packet: processing, matched[SERV:%d]: %s\n", mi, m.name);
+                            _mdns._messageSend (_header.xid, PacketTypeServiceRecord, &r);
                         }
                         if (m.unsupported) {
-                            DEBUG_PRINTF("MDNS: packet: processing, negated[SERV:%d]: %s\n", mi, m.name);
-                            _mdns._messageSend(_header.xid, PacketTypeNextSecure, &r);
+                            DEBUG_PRINTF ("MDNS: packet: processing, negated[SERV:%d]: %s\n", mi, m.name);
+                            _mdns._messageSend (_header.xid, PacketTypeNextSecure, &r);
                         }
                         mi++;
                     }
                 }
             }
-            Responder(MDNS& mdns, const Header& header)
-                : _mdns(mdns), _header(header),
-                  recordsLengthStatic(3), recordsLength(_mdns._services.size() + recordsLengthStatic),
-                  recordsMatcherTop(recordsLength), recordsMatcherEach(recordsLength){};
-        } _responder(*this, header);
+            Responder (MDNS &mdns, const Header &header) :
+                _mdns (mdns),
+                _header (header),
+                recordsLengthStatic (3),
+                recordsLength (_mdns._services.size () + recordsLengthStatic),
+                recordsMatcherTop (recordsLength),
+                recordsMatcherEach (recordsLength) { };
+        } _responder (*this, header);
 
         /////////////////////////////////////////////
         /////////////////////////////////////////////
 
-        UDP_READ_PACKET_CLASS<Responder> processor(_responder, header);
-        if (!processor.process())
+        UDP_READ_PACKET_CLASS<Responder> processor (_responder, header);
+        if (! processor.process ())
             return Status::PacketBad;
 
     } else {
 #ifdef DEBUG_MDNS
 
-        DEBUG_PRINTF("MDNS: packet: debugging, %s / %s:%u\n", parseHeader(header).c_str(), UDP_READ_PEER_ADDR().toString().c_str(), UDP_READ_PEER_PORT());
+        DEBUG_PRINTF ("MDNS: packet: debugging, %s / %s:%u\n", parseHeader (header).c_str (), UDP_READ_PEER_ADDR ().toString ().c_str (), UDP_READ_PEER_PORT ());
 
-        NameCollector collector(*this, header);    // will do nothing, already did debugging
-        UDP_READ_PACKET_CLASS<NameCollector> processor(collector, header);
-        if (!processor.process())
+        NameCollector collector (*this, header);    // will do nothing, already did debugging
+        UDP_READ_PACKET_CLASS<NameCollector> processor (collector, header);
+        if (! processor.process ())
             return Status::PacketBad;    // should throw
 
 #endif
@@ -1322,8 +1363,8 @@ MDNS::Status MDNS::_messageRecv() {
 bad_packet_failed_header:
     detailedError = "invalid header";
 bad_packet_failed_checks:
-    DEBUG_PRINTF("MDNS: packet: faulty(%s), %s / %s:%u\n", detailedError, parseHeader(header).c_str(), UDP_READ_PEER_ADDR().toString().c_str(), UDP_READ_PEER_PORT());
-    UDP_READ_END();
+    DEBUG_PRINTF ("MDNS: packet: faulty(%s), %s / %s:%u\n", detailedError, parseHeader (header).c_str (), UDP_READ_PEER_ADDR ().toString ().c_str (), UDP_READ_PEER_PORT ());
+    UDP_READ_END ();
     return Status::PacketBad;
 }
 
@@ -1337,98 +1378,98 @@ static constexpr uint16_t DNS_COUNT_PER_SERVICE = 3;    // SRV + TXT + PTR per s
 static constexpr uint16_t DNS_COUNT_DNS_SD_PTR = 1;     // DNS-SD PTR record
 static constexpr uint16_t DNS_COUNT_NSEC_RECORD = 1;    // NSEC record with bitmap
 
-MDNS::Status MDNS::_messageSend(const uint16_t xid, const int type, const Service* service) {
+MDNS::Status MDNS::_messageSend (const uint16_t xid, const int type, const Service *service) {
 
-    UDP_WRITE_BEGIN();
+    UDP_WRITE_BEGIN ();
 
-    Header header{};
-    header.xid = htons(xid);
+    Header header {};
+    header.xid = htons (xid);
     header.opCode = DNS_OPCODE_QUERY;
     switch (type) {
-        case PacketTypeAddressRecord:
-        case PacketTypeAddressRelease:
-        case PacketTypeReverseRecord:
-            header.queryResponse = DNS_QR_RESPONSE;
-            header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
-            header.answerCount = htons(DNS_COUNT_A_RECORD);
-            header.additionalCount = htons(type != PacketTypeReverseRecord ? 0 : DNS_COUNT_A_RECORD);    // A record as additional
-            break;
-        case PacketTypeServiceRecord:
-        case PacketTypeServiceRelease:
-            header.queryResponse = DNS_QR_RESPONSE;
-            header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
-            header.answerCount = htons(DNS_COUNT_PER_SERVICE);
-            header.additionalCount = htons(DNS_COUNT_DNS_SD_PTR + DNS_COUNT_A_RECORD);    // DNS-SD + A record as additional
-            break;
-        case PacketTypeCompleteRecord:
-        case PacketTypeCompleteRelease:
-            header.queryResponse = DNS_QR_RESPONSE;
-            header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
-            header.answerCount = htons(DNS_COUNT_A_RECORD + (_services.empty() ? 0 : (_services.size() * DNS_COUNT_PER_SERVICE + _serviceTypes.size() * DNS_COUNT_DNS_SD_PTR)));
-            break;
-        case PacketTypeProbe:
-            header.queryResponse = DNS_QR_QUERY;
-            header.authoritiveAnswer = DNS_AA_NON_AUTHORITATIVE;
-            header.queryCount = htons(DNS_COUNT_SINGLE);
-            header.authorityCount = htons(DNS_COUNT_A_RECORD + (_services.empty() ? 0 : (_services.size() * DNS_COUNT_PER_SERVICE + _serviceTypes.size() * DNS_COUNT_DNS_SD_PTR)));
-            break;
-        case PacketTypeNextSecure:
-            header.queryResponse = DNS_QR_RESPONSE;
-            header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
-            header.answerCount = htons(DNS_COUNT_NSEC_RECORD);
-            header.additionalCount = htons(service ? 0 : DNS_COUNT_A_RECORD);    // A record as additional
-            break;
+    case PacketTypeAddressRecord :
+    case PacketTypeAddressRelease :
+    case PacketTypeReverseRecord :
+        header.queryResponse = DNS_QR_RESPONSE;
+        header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
+        header.answerCount = htons (DNS_COUNT_A_RECORD);
+        header.additionalCount = htons (type != PacketTypeReverseRecord ? 0 : DNS_COUNT_A_RECORD);    // A record as additional
+        break;
+    case PacketTypeServiceRecord :
+    case PacketTypeServiceRelease :
+        header.queryResponse = DNS_QR_RESPONSE;
+        header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
+        header.answerCount = htons (DNS_COUNT_PER_SERVICE);
+        header.additionalCount = htons (DNS_COUNT_DNS_SD_PTR + DNS_COUNT_A_RECORD);    // DNS-SD + A record as additional
+        break;
+    case PacketTypeCompleteRecord :
+    case PacketTypeCompleteRelease :
+        header.queryResponse = DNS_QR_RESPONSE;
+        header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
+        header.answerCount = htons (DNS_COUNT_A_RECORD + (_services.empty () ? 0 : (_services.size () * DNS_COUNT_PER_SERVICE + _serviceTypes.size () * DNS_COUNT_DNS_SD_PTR)));
+        break;
+    case PacketTypeProbe :
+        header.queryResponse = DNS_QR_QUERY;
+        header.authoritiveAnswer = DNS_AA_NON_AUTHORITATIVE;
+        header.queryCount = htons (DNS_COUNT_SINGLE);
+        header.authorityCount = htons (DNS_COUNT_A_RECORD + (_services.empty () ? 0 : (_services.size () * DNS_COUNT_PER_SERVICE + _serviceTypes.size () * DNS_COUNT_DNS_SD_PTR)));
+        break;
+    case PacketTypeNextSecure :
+        header.queryResponse = DNS_QR_RESPONSE;
+        header.authoritiveAnswer = DNS_AA_AUTHORITATIVE;
+        header.answerCount = htons (DNS_COUNT_NSEC_RECORD);
+        header.additionalCount = htons (service ? 0 : DNS_COUNT_A_RECORD);    // A record as additional
+        break;
     }
 
-    UDP_WRITE_DATA(reinterpret_cast<uint8_t*>(&header), sizeof(Header));
+    UDP_WRITE_DATA (reinterpret_cast<uint8_t *> (&header), sizeof (Header));
 
     switch (type) {
 
-        case PacketTypeAddressRecord:
-            DEBUG_PRINTF("MDNS: packet: sending Address record, ip=%s, name=%s\n", IPAddress(_addr).toString().c_str(), _fqhn.c_str());
-            _writeAddressRecord(_ttls.announce);
-            break;
-        case PacketTypeAddressRelease:
-            DEBUG_PRINTF("MDNS: packet: sending Address release, ip=%s, name=%s\n", IPAddress(_addr).toString().c_str(), _fqhn.c_str());
-            _writeAddressRecord(_ttls.goodbye);
-            break;
-        case PacketTypeReverseRecord:
-            DEBUG_PRINTF("MDNS: packet: sending Reverse record, ip=%s, name=%s\n", IPAddress(_addr).toString().c_str(), _fqhn.c_str());
-            _writeReverseRecord(_ttls.announce);
-            break;
+    case PacketTypeAddressRecord :
+        DEBUG_PRINTF ("MDNS: packet: sending Address record, ip=%s, name=%s\n", IPAddress (_addr).toString ().c_str (), _fqhn.c_str ());
+        _writeAddressRecord (_ttls.announce);
+        break;
+    case PacketTypeAddressRelease :
+        DEBUG_PRINTF ("MDNS: packet: sending Address release, ip=%s, name=%s\n", IPAddress (_addr).toString ().c_str (), _fqhn.c_str ());
+        _writeAddressRecord (_ttls.goodbye);
+        break;
+    case PacketTypeReverseRecord :
+        DEBUG_PRINTF ("MDNS: packet: sending Reverse record, ip=%s, name=%s\n", IPAddress (_addr).toString ().c_str (), _fqhn.c_str ());
+        _writeReverseRecord (_ttls.announce);
+        break;
 
-        case PacketTypeServiceRecord:
-            assert(service != nullptr);
-            DEBUG_PRINTF("MDNS: packet: sending Service record %s/%u/%s/%s/[%d]\n", Service::toString(service->proto).c_str(), service->port, service->name.c_str(), service->_serv.c_str(), service->text.size());
-            _writeServiceRecord(*service, _ttls.announce);
-            break;
-        case PacketTypeServiceRelease:
-            assert(service != nullptr);
-            DEBUG_PRINTF("MDNS: packet: sending Service release %s/%u/%s/%s/[%d]\n", Service::toString(service->proto).c_str(), service->port, service->name.c_str(), service->_serv.c_str(), service->text.size());
-            _writeServiceRecord(*service, _ttls.goodbye);
-            break;
+    case PacketTypeServiceRecord :
+        assert (service != nullptr);
+        DEBUG_PRINTF ("MDNS: packet: sending Service record %s/%u/%s/%s/[%d]\n", Service::toString (service->proto).c_str (), service->port, service->name.c_str (), service->_serv.c_str (), service->text.size ());
+        _writeServiceRecord (*service, _ttls.announce);
+        break;
+    case PacketTypeServiceRelease :
+        assert (service != nullptr);
+        DEBUG_PRINTF ("MDNS: packet: sending Service release %s/%u/%s/%s/[%d]\n", Service::toString (service->proto).c_str (), service->port, service->name.c_str (), service->_serv.c_str (), service->text.size ());
+        _writeServiceRecord (*service, _ttls.goodbye);
+        break;
 
-        case PacketTypeCompleteRecord:
-            DEBUG_PRINTF("MDNS: packet: sending Complete record, ip=%s, name=%s, arpa=%s, services=%d, serviceTypes=%d\n", IPAddress(_addr).toString().c_str(), _fqhn.c_str(), _arpa.c_str(), _services.size(), _serviceTypes.size());
-            _writeCompleteRecord(_ttls.announce);
-            break;
-        case PacketTypeCompleteRelease:
-            DEBUG_PRINTF("MDNS: packet: sending Complete release, ip=%s, name=%s, arpa=%s, services=%d, serviceTypes=%d\n", IPAddress(_addr).toString().c_str(), _fqhn.c_str(), _arpa.c_str(), _services.size(), _serviceTypes.size());
-            _writeCompleteRecord(_ttls.goodbye);
-            break;
+    case PacketTypeCompleteRecord :
+        DEBUG_PRINTF ("MDNS: packet: sending Complete record, ip=%s, name=%s, arpa=%s, services=%d, serviceTypes=%d\n", IPAddress (_addr).toString ().c_str (), _fqhn.c_str (), _arpa.c_str (), _services.size (), _serviceTypes.size ());
+        _writeCompleteRecord (_ttls.announce);
+        break;
+    case PacketTypeCompleteRelease :
+        DEBUG_PRINTF ("MDNS: packet: sending Complete release, ip=%s, name=%s, arpa=%s, services=%d, serviceTypes=%d\n", IPAddress (_addr).toString ().c_str (), _fqhn.c_str (), _arpa.c_str (), _services.size (), _serviceTypes.size ());
+        _writeCompleteRecord (_ttls.goodbye);
+        break;
 
-        case PacketTypeProbe:
-            DEBUG_PRINTF("MDNS: packet: sending Probe query, name=%s\n", _fqhn.c_str());
-            _writeProbeRecord(_ttls.probe);
-            break;
+    case PacketTypeProbe :
+        DEBUG_PRINTF ("MDNS: packet: sending Probe query, name=%s\n", _fqhn.c_str ());
+        _writeProbeRecord (_ttls.probe);
+        break;
 
-        case PacketTypeNextSecure:
-            DEBUG_PRINTF("MDNS: packet: sending NextSecure for supported types\n");
-            _writeNextSecureRecord(service ? service->_fqsn : _fqhn, { DNS_RECORD_PTR, DNS_RECORD_SRV, service ? DNS_RECORD_TXT : DNS_RECORD_A }, _ttls.announce, service ? true : false);
-            break;
+    case PacketTypeNextSecure :
+        DEBUG_PRINTF ("MDNS: packet: sending NextSecure for supported types\n");
+        _writeNextSecureRecord (service ? service->_fqsn : _fqhn, { DNS_RECORD_PTR, DNS_RECORD_SRV, service ? DNS_RECORD_TXT : DNS_RECORD_A }, _ttls.announce, service ? true : false);
+        break;
     }
 
-    UDP_WRITE_END();
+    UDP_WRITE_END ();
 
     return Status::Success;
 }
@@ -1436,199 +1477,199 @@ MDNS::Status MDNS::_messageSend(const uint16_t xid, const int type, const Servic
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-static inline void _encodeUint16(uint8_t* ptr, const uint16_t val) {
-    *(reinterpret_cast<uint16_t*>(ptr)) = htons(val);
+static inline void _encodeUint16 (uint8_t *ptr, const uint16_t val) {
+    *(reinterpret_cast<uint16_t *> (ptr)) = htons (val);
 }
 
-static inline void _encodeUint32(uint8_t* ptr, const uint32_t val) {
-    *(reinterpret_cast<uint32_t*>(ptr)) = htonl(val);
+static inline void _encodeUint32 (uint8_t *ptr, const uint32_t val) {
+    *(reinterpret_cast<uint32_t *> (ptr)) = htonl (val);
 }
 
 //
 
-static inline void _writeControlBytes(UDP* _udp, const uint8_t byte1, const uint8_t byte2, const uint8_t byte3, const uint8_t byte4, const uint32_t ttl) {
-    uint8_t buffer[8];
-    buffer[0] = byte1;
-    buffer[1] = byte2;
-    buffer[2] = byte3;
-    buffer[3] = byte4;
-    _encodeUint32(&buffer[4], ttl);
-    UDP_WRITE_DATA(buffer, 8);
+static inline void _writeControlBytes (UDP *_udp, const uint8_t byte1, const uint8_t byte2, const uint8_t byte3, const uint8_t byte4, const uint32_t ttl) {
+    uint8_t buffer [8];
+    buffer [0] = byte1;
+    buffer [1] = byte2;
+    buffer [2] = byte3;
+    buffer [3] = byte4;
+    _encodeUint32 (&buffer [4], ttl);
+    UDP_WRITE_DATA (buffer, 8);
 }
 
-static inline void _writeServiceBytes(UDP* _udp, const uint16_t priority, const uint16_t weight, const uint16_t port) {
-    uint8_t buffer[6];
-    _encodeUint16(&buffer[0], priority);
-    _encodeUint16(&buffer[2], weight);
-    _encodeUint16(&buffer[4], port);
-    UDP_WRITE_DATA(buffer, 2 + 2 + 2);
+static inline void _writeServiceBytes (UDP *_udp, const uint16_t priority, const uint16_t weight, const uint16_t port) {
+    uint8_t buffer [6];
+    _encodeUint16 (&buffer [0], priority);
+    _encodeUint16 (&buffer [2], weight);
+    _encodeUint16 (&buffer [4], port);
+    UDP_WRITE_DATA (buffer, 2 + 2 + 2);
 }
 
-static inline void _writeLength(UDP* _udp, const uint16_t length) {
-    uint8_t buffer[2];
-    _encodeUint16(buffer, length);
-    UDP_WRITE_DATA(buffer, 2);
+static inline void _writeLength (UDP *_udp, const uint16_t length) {
+    uint8_t buffer [2];
+    _encodeUint16 (buffer, length);
+    UDP_WRITE_DATA (buffer, 2);
 }
 
-static inline void _writeAddressLengthAndContent(UDP* _udp, const IPAddress& address) {
-    uint8_t buffer[4] = { address[0], address[1], address[2], address[3] };
-    _writeLength(_udp, 4);
-    UDP_WRITE_DATA(buffer, 4);
+static inline void _writeAddressLengthAndContent (UDP *_udp, const IPAddress &address) {
+    uint8_t buffer [4] = { address [0], address [1], address [2], address [3] };
+    _writeLength (_udp, 4);
+    UDP_WRITE_DATA (buffer, 4);
 }
 
-static inline void _writeStringLengthAndContent(UDP* _udp, const String& str, const size_t max) {
-    const uint8_t size = static_cast<uint8_t>(std::min(str.length(), max));
-    UDP_WRITE_BYTE(size);
-    UDP_WRITE_DATA(reinterpret_cast<const uint8_t*>(str.c_str()), size);
+static inline void _writeStringLengthAndContent (UDP *_udp, const String &str, const size_t max) {
+    const uint8_t size = static_cast<uint8_t> (std::min (str.length (), max));
+    UDP_WRITE_BYTE (size);
+    UDP_WRITE_DATA (reinterpret_cast<const uint8_t *> (str.c_str ()), size);
 }
 
 // TODO compression
-static inline void _writeDNSName(UDP* _udp, const String& name) {
-    const size_t len = std::min(name.length(), DNS_LABEL_LENGTH_MAX);
-    if (!len)
-        UDP_WRITE_BYTE(static_cast<uint8_t>(0));
+static inline void _writeDNSName (UDP *_udp, const String &name) {
+    const size_t len = std::min (name.length (), DNS_LABEL_LENGTH_MAX);
+    if (! len)
+        UDP_WRITE_BYTE (static_cast<uint8_t> (0));
     else {
-        uint8_t buffer[len + 2];    // stack usage up to ~64 bytes
+        uint8_t buffer [len + 2];    // stack usage up to ~64 bytes
         uint16_t write_pos = 1, length_pos = 0;
         for (size_t i = 0; i < len; i++) {
-            if (name[i] == '.') {
-                buffer[length_pos] = static_cast<uint8_t>(write_pos - (length_pos + 1));
+            if (name [i] == '.') {
+                buffer [length_pos] = static_cast<uint8_t> (write_pos - (length_pos + 1));
                 length_pos = write_pos;
             } else
-                buffer[write_pos] = name[i];
+                buffer [write_pos] = name [i];
             write_pos++;
         }
         if ((write_pos - (length_pos + 1)) > 0) {
-            buffer[length_pos] = static_cast<uint8_t>(write_pos - (length_pos + 1));
+            buffer [length_pos] = static_cast<uint8_t> (write_pos - (length_pos + 1));
             // length_pos = write_pos;
             write_pos++;
         }
-        buffer[--write_pos] = 0;    // null terminator
-        UDP_WRITE_DATA(buffer, write_pos + 1);
+        buffer [--write_pos] = 0;    // null terminator
+        UDP_WRITE_DATA (buffer, write_pos + 1);
     }
 }
 
-static size_t _sizeofDNSName(const String& name) {
-    return name.length() + 2;    // string length + length byte + null terminator ('.'s just turn into byte lengths)
+static size_t _sizeofDNSName (const String &name) {
+    return name.length () + 2;    // string length + length byte + null terminator ('.'s just turn into byte lengths)
 }
 
 //
 
-static inline void _writeNameLengthAndContent(UDP* _udp, const String& name) {
-    _writeLength(_udp, name.length() + 2);
-    _writeDNSName(_udp, name);
+static inline void _writeNameLengthAndContent (UDP *_udp, const String &name) {
+    _writeLength (_udp, name.length () + 2);
+    _writeDNSName (_udp, name);
 }
 
-static inline void _write(UDP* _udp, const DNSBitmap& bitmap) {
-    UDP_WRITE_DATA(bitmap.data(), bitmap.size());
+static inline void _write (UDP *_udp, const DNSBitmap &bitmap) {
+    UDP_WRITE_DATA (bitmap.data (), bitmap.size ());
 }
 
-static inline void _write(UDP* _udp, const MDNS::Service::TXT& record) {
-    if (record.entries().empty()) {
-        _writeLength(_udp, DNS_TXT_EMPTY_LENGTH);
-        UDP_WRITE_BYTE(DNS_TXT_EMPTY_CONTENT);
+static inline void _write (UDP *_udp, const MDNS::Service::TXT &record) {
+    if (record.entries ().empty ()) {
+        _writeLength (_udp, DNS_TXT_EMPTY_LENGTH);
+        UDP_WRITE_BYTE (DNS_TXT_EMPTY_CONTENT);
     } else {
-        uint16_t length = record.length();
-        _writeLength(_udp, length);
-        for (const auto& entry : record.entries()) {
+        uint16_t length = record.length ();
+        _writeLength (_udp, length);
+        for (const auto &entry : record.entries ()) {
             String encoded;
-            encoded.reserve(MDNS::Service::TXT::TOTAL_LENGTH_MAX + 1);
+            encoded.reserve (MDNS::Service::TXT::TOTAL_LENGTH_MAX + 1);
             encoded += entry.key;
-            if (!entry.value.empty()) {
+            if (! entry.value.empty ()) {
                 encoded += '=';
                 if (entry.binary) {
-                    std::vector<char> buffer(Base64::length(entry.value.size()) + 1);
-                    if (Base64::encode(entry.value.data(), entry.value.size(), buffer.data(), buffer.size()))
-                        encoded += String(buffer.data());
+                    std::vector<char> buffer (Base64::length (entry.value.size ()) + 1);
+                    if (Base64::encode (entry.value.data (), entry.value.size (), buffer.data (), buffer.size ()))
+                        encoded += String (buffer.data ());
                 } else
-                    encoded += String(reinterpret_cast<const char*>(entry.value.data()), entry.value.size());
+                    encoded += String (reinterpret_cast<const char *> (entry.value.data ()), entry.value.size ());
             }
-            _writeStringLengthAndContent(_udp, encoded, MDNS::Service::TXT::TOTAL_LENGTH_MAX);
+            _writeStringLengthAndContent (_udp, encoded, MDNS::Service::TXT::TOTAL_LENGTH_MAX);
         }
     }
 }
 
 // -----------------------------------------------------------------------------------------------
 
-static inline void _writePTRRecord(UDP* _udp, const String& name, const String& target, const uint8_t cacheFlush, const uint32_t ttl) {
-    _writeDNSName(_udp, name);
-    _writeControlBytes(_udp, DNS_RECORD_HI, DNS_RECORD_PTR, cacheFlush, DNS_CLASS_IN, ttl);
-    _writeNameLengthAndContent(_udp, target);
+static inline void _writePTRRecord (UDP *_udp, const String &name, const String &target, const uint8_t cacheFlush, const uint32_t ttl) {
+    _writeDNSName (_udp, name);
+    _writeControlBytes (_udp, DNS_RECORD_HI, DNS_RECORD_PTR, cacheFlush, DNS_CLASS_IN, ttl);
+    _writeNameLengthAndContent (_udp, target);
 }
-static inline void _writeARecord(UDP* _udp, const String& name, const IPAddress& addr, const uint8_t cacheFlush, const uint32_t ttl) {
-    _writeDNSName(_udp, name);
-    _writeControlBytes(_udp, DNS_RECORD_HI, DNS_RECORD_A, cacheFlush, DNS_CLASS_IN, ttl);
-    _writeAddressLengthAndContent(_udp, addr);
+static inline void _writeARecord (UDP *_udp, const String &name, const IPAddress &addr, const uint8_t cacheFlush, const uint32_t ttl) {
+    _writeDNSName (_udp, name);
+    _writeControlBytes (_udp, DNS_RECORD_HI, DNS_RECORD_A, cacheFlush, DNS_CLASS_IN, ttl);
+    _writeAddressLengthAndContent (_udp, addr);
 }
-static inline void _writeANYRecord(UDP* _udp, const String& name, const IPAddress& addr) {
-    _writeDNSName(_udp, name);
-    _writeControlBytes(_udp, DNS_RECORD_HI, DNS_RECORD_ANY, DNS_CACHE_NO_FLUSH, DNS_CLASS_IN, 0);    // Always CACHE_NO_FLUSH and TTL=0 for probe queries
-    _writeAddressLengthAndContent(_udp, addr);
+static inline void _writeANYRecord (UDP *_udp, const String &name, const IPAddress &addr) {
+    _writeDNSName (_udp, name);
+    _writeControlBytes (_udp, DNS_RECORD_HI, DNS_RECORD_ANY, DNS_CACHE_NO_FLUSH, DNS_CLASS_IN, 0);    // Always CACHE_NO_FLUSH and TTL=0 for probe queries
+    _writeAddressLengthAndContent (_udp, addr);
 }
-static inline void _writeNSECRecord(UDP* _udp, const String& name, const DNSBitmap& bitmap, const uint8_t cacheFlush, const uint32_t ttl) {
-    _writeDNSName(_udp, name);
-    _writeControlBytes(_udp, DNS_RECORD_HI, DNS_RECORD_NSEC, cacheFlush, DNS_CLASS_IN, ttl);
-    _writeLength(_udp, _sizeofDNSName(name) + bitmap.size());
-    _writeDNSName(_udp, name);
-    _write(_udp, bitmap);
+static inline void _writeNSECRecord (UDP *_udp, const String &name, const DNSBitmap &bitmap, const uint8_t cacheFlush, const uint32_t ttl) {
+    _writeDNSName (_udp, name);
+    _writeControlBytes (_udp, DNS_RECORD_HI, DNS_RECORD_NSEC, cacheFlush, DNS_CLASS_IN, ttl);
+    _writeLength (_udp, _sizeofDNSName (name) + bitmap.size ());
+    _writeDNSName (_udp, name);
+    _write (_udp, bitmap);
 }
-static inline void _writeSRVRecord(UDP* _udp, const String& name, const String& fqhn, const uint16_t port, const MDNS::Service::Config& config, const uint8_t cacheFlush, const uint32_t ttl) {
-    _writeDNSName(_udp, name);
-    _writeControlBytes(_udp, DNS_RECORD_HI, DNS_RECORD_SRV, cacheFlush, DNS_CLASS_IN, ttl);
-    _writeLength(_udp, 2 + 2 + 2 + _sizeofDNSName(fqhn));
-    _writeServiceBytes(_udp, config.priority, config.weight, port);
-    _writeDNSName(_udp, fqhn);
+static inline void _writeSRVRecord (UDP *_udp, const String &name, const String &fqhn, const uint16_t port, const MDNS::Service::Config &config, const uint8_t cacheFlush, const uint32_t ttl) {
+    _writeDNSName (_udp, name);
+    _writeControlBytes (_udp, DNS_RECORD_HI, DNS_RECORD_SRV, cacheFlush, DNS_CLASS_IN, ttl);
+    _writeLength (_udp, 2 + 2 + 2 + _sizeofDNSName (fqhn));
+    _writeServiceBytes (_udp, config.priority, config.weight, port);
+    _writeDNSName (_udp, fqhn);
 }
-static inline void _writeTXTRecord(UDP* _udp, const String& name, const MDNS::Service::TXT& text, const uint8_t cacheFlush, const uint32_t ttl) {
-    _writeDNSName(_udp, name);
-    _writeControlBytes(_udp, DNS_RECORD_HI, DNS_RECORD_TXT, cacheFlush, DNS_CLASS_IN, ttl);
-    _write(_udp, text);
+static inline void _writeTXTRecord (UDP *_udp, const String &name, const MDNS::Service::TXT &text, const uint8_t cacheFlush, const uint32_t ttl) {
+    _writeDNSName (_udp, name);
+    _writeControlBytes (_udp, DNS_RECORD_HI, DNS_RECORD_TXT, cacheFlush, DNS_CLASS_IN, ttl);
+    _write (_udp, text);
 }
 
 // -----------------------------------------------------------------------------------------------
 // -----------------------------------------------------------------------------------------------
 
-void MDNS::_writeAddressRecord(const uint32_t ttl) const {
+void MDNS::_writeAddressRecord (const uint32_t ttl) const {
 
     // 1. A record for Hostname -> IP Address
-    _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+    _writeARecord (_udp, _fqhn, _addr, _configureCacheFlush (DNSRecordUniqueness::Unique), _configureTTL (DNSRecordUniqueness::Unique, _ttls, ttl));
 }
 
 // -----------------------------------------------------------------------------------------------
 
-void MDNS::_writeReverseRecord(const uint32_t ttl) const {
+void MDNS::_writeReverseRecord (const uint32_t ttl) const {
 
     // 1. PTR record for Reverse IP Address -> Hostname
-    _writePTRRecord(_udp, _arpa, _fqhn, _configureCacheFlush(DNSRecordUniqueness::Shared), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+    _writePTRRecord (_udp, _arpa, _fqhn, _configureCacheFlush (DNSRecordUniqueness::Shared), _configureTTL (DNSRecordUniqueness::Shared, _ttls, ttl));
     // 2. A record for Hostname -> IP Address
-    _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+    _writeARecord (_udp, _fqhn, _addr, _configureCacheFlush (DNSRecordUniqueness::Unique), _configureTTL (DNSRecordUniqueness::Unique, _ttls, ttl));
 }
 
 // -----------------------------------------------------------------------------------------------
 
-void MDNS::_writeServiceRecord(const Service& service, const uint32_t ttl) const {
+void MDNS::_writeServiceRecord (const Service &service, const uint32_t ttl) const {
 
     // 1. SRV record for Service -> Hostname
-    _writeSRVRecord(_udp, service._fqsn, _fqhn, service.port, service.config, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+    _writeSRVRecord (_udp, service._fqsn, _fqhn, service.port, service.config, _configureCacheFlush (DNSRecordUniqueness::Unique), _configureTTL (DNSRecordUniqueness::Unique, _ttls, ttl));
     // 2. TXT record for Service (no target)
-    _writeTXTRecord(_udp, service._fqsn, service.text, _configureCacheFlush(DNSRecordUniqueness::Contextual), _configureTTL(DNSRecordUniqueness::Contextual, _ttls, ttl));
+    _writeTXTRecord (_udp, service._fqsn, service.text, _configureCacheFlush (DNSRecordUniqueness::Contextual), _configureTTL (DNSRecordUniqueness::Contextual, _ttls, ttl));
     // 3. PTR record for Service Type -> Service
-    _writePTRRecord(_udp, service._serv, service._fqsn, _configureCacheFlush(DNSRecordUniqueness::Shared), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+    _writePTRRecord (_udp, service._serv, service._fqsn, _configureCacheFlush (DNSRecordUniqueness::Shared), _configureTTL (DNSRecordUniqueness::Shared, _ttls, ttl));
     // // x. PTR records for Sub Service Types
     // for (const auto& subtype : service.config.subtypes)
     //     _writePTRRecord(_udp, subtype + "._sub." + service._serv, service._fqsn, _configureCacheFlush(DNSRecordUniqueness::Shared, isProbing), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
 
     // 4. PTR record for DNS-SD => Service Type
-    _writePTRRecord(_udp, SERVICE_SD__fqsn, service._serv, _configureCacheFlush(DNSRecordUniqueness::Shared), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+    _writePTRRecord (_udp, SERVICE_SD__fqsn, service._serv, _configureCacheFlush (DNSRecordUniqueness::Shared), _configureTTL (DNSRecordUniqueness::Shared, _ttls, ttl));
     // 5. A record for Hostname -> IP Address
-    _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+    _writeARecord (_udp, _fqhn, _addr, _configureCacheFlush (DNSRecordUniqueness::Unique), _configureTTL (DNSRecordUniqueness::Unique, _ttls, ttl));
 }
 
-static size_t _sizeofServiceRecord(const MDNS::Service& service, const String& fqhn) {
+static size_t _sizeofServiceRecord (const MDNS::Service &service, const String &fqhn) {
     size_t size = 0;
-    size += _sizeofDNSName(service._fqsn) + DNS_RECORD_HEADER_SIZE + DNS_SRV_DETAILS_SIZE + _sizeofDNSName(fqhn);    // SRV
-    size += _sizeofDNSName(service._fqsn) + DNS_RECORD_HEADER_SIZE + service.text.length();                          // TXT
-    size += _sizeofDNSName(service._serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service._fqsn);                  // PTR SRV
+    size += _sizeofDNSName (service._fqsn) + DNS_RECORD_HEADER_SIZE + DNS_SRV_DETAILS_SIZE + _sizeofDNSName (fqhn);    // SRV
+    size += _sizeofDNSName (service._fqsn) + DNS_RECORD_HEADER_SIZE + service.text.length ();                          // TXT
+    size += _sizeofDNSName (service._serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName (service._fqsn);                  // PTR SRV
     // size += service.config.subtypes.empty() ? 0 : std::accumulate(service.config.subtypes.begin(), service.config.subtypes.end(), static_cast<size_t>(0), [&](size_t size, const auto& subtype) {
     //     return size + _sizeofDNSName(subtype + "._sub." + service._serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service._fqsn);
     // });
@@ -1637,80 +1678,80 @@ static size_t _sizeofServiceRecord(const MDNS::Service& service, const String& f
 
 // -----------------------------------------------------------------------------------------------
 
-void MDNS::_writeCompleteRecord(const uint32_t ttl) const {
+void MDNS::_writeCompleteRecord (const uint32_t ttl) const {
 
     // 1. A record for Hostname -> IP Address
-    _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+    _writeARecord (_udp, _fqhn, _addr, _configureCacheFlush (DNSRecordUniqueness::Unique), _configureTTL (DNSRecordUniqueness::Unique, _ttls, ttl));
 
-    if (!_services.empty()) {
+    if (! _services.empty ()) {
         // 3-N service records
-        for (const auto& service : _services) {
+        for (const auto &service : _services) {
             // 1. SRV record for Service -> Hostname
-            _writeSRVRecord(_udp, service._fqsn, _fqhn, service.port, service.config, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+            _writeSRVRecord (_udp, service._fqsn, _fqhn, service.port, service.config, _configureCacheFlush (DNSRecordUniqueness::Unique), _configureTTL (DNSRecordUniqueness::Unique, _ttls, ttl));
             // 2. TXT record for Service (no target)
-            _writeTXTRecord(_udp, service._fqsn, service.text, _configureCacheFlush(DNSRecordUniqueness::Contextual), _configureTTL(DNSRecordUniqueness::Contextual, _ttls, ttl));
+            _writeTXTRecord (_udp, service._fqsn, service.text, _configureCacheFlush (DNSRecordUniqueness::Contextual), _configureTTL (DNSRecordUniqueness::Contextual, _ttls, ttl));
             // 3. PTR record for Service Type -> Service
-            _writePTRRecord(_udp, service._serv, service._fqsn, _configureCacheFlush(DNSRecordUniqueness::Shared), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+            _writePTRRecord (_udp, service._serv, service._fqsn, _configureCacheFlush (DNSRecordUniqueness::Shared), _configureTTL (DNSRecordUniqueness::Shared, _ttls, ttl));
         }
 
         // N-O PTR records for DNS-SD => Service Type
-        for (const auto& serviceType : _serviceTypes)
-            _writePTRRecord(_udp, SERVICE_SD__fqsn, serviceType, _configureCacheFlush(DNSRecordUniqueness::Shared), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+        for (const auto &serviceType : _serviceTypes)
+            _writePTRRecord (_udp, SERVICE_SD__fqsn, serviceType, _configureCacheFlush (DNSRecordUniqueness::Shared), _configureTTL (DNSRecordUniqueness::Shared, _ttls, ttl));
     }
 }
 
-static size_t _sizeofCompleteRecord(const MDNS::Services& services, const MDNS::ServiceTypes& serviceTypes, const String& fqhn) {
+static size_t _sizeofCompleteRecord (const MDNS::Services &services, const MDNS::ServiceTypes &serviceTypes, const String &fqhn) {
     size_t size = 0;
-    size += _sizeofDNSName(fqhn) + DNS_RECORD_HEADER_SIZE + 4;    // PTR IP
-    size += services.empty() ? 0 : std::accumulate(services.begin(), services.end(), static_cast<size_t>(0), [&](size_t size, const MDNS::Service& service) {
-        size += _sizeofDNSName(service._fqsn) + DNS_RECORD_HEADER_SIZE + DNS_SRV_DETAILS_SIZE + _sizeofDNSName(fqhn);    // SRV
-        size += _sizeofDNSName(service._fqsn) + DNS_RECORD_HEADER_SIZE + service.text.length();                          // TXT
-        size += _sizeofDNSName(service._serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(service._fqsn);                  // PTR SRV
+    size += _sizeofDNSName (fqhn) + DNS_RECORD_HEADER_SIZE + 4;    // PTR IP
+    size += services.empty () ? 0 : std::accumulate (services.begin (), services.end (), static_cast<size_t> (0), [&] (size_t size, const MDNS::Service &service) {
+        size += _sizeofDNSName (service._fqsn) + DNS_RECORD_HEADER_SIZE + DNS_SRV_DETAILS_SIZE + _sizeofDNSName (fqhn);    // SRV
+        size += _sizeofDNSName (service._fqsn) + DNS_RECORD_HEADER_SIZE + service.text.length ();                          // TXT
+        size += _sizeofDNSName (service._serv) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName (service._fqsn);                  // PTR SRV
         return size;
     });
-    size += serviceTypes.empty() ? 0 : std::accumulate(serviceTypes.begin(), serviceTypes.end(), static_cast<size_t>(0), [&](size_t size, const String& serviceType) {
-        return size + _sizeofDNSName(SERVICE_SD__fqsn) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName(serviceType);    // PTR SD
+    size += serviceTypes.empty () ? 0 : std::accumulate (serviceTypes.begin (), serviceTypes.end (), static_cast<size_t> (0), [&] (size_t size, const String &serviceType) {
+        return size + _sizeofDNSName (SERVICE_SD__fqsn) + DNS_RECORD_HEADER_SIZE + _sizeofDNSName (serviceType);    // PTR SD
     });
     return size;
 }
 
 // -----------------------------------------------------------------------------------------------
 
-void MDNS::_writeProbeRecord(const uint32_t ttl) const {
+void MDNS::_writeProbeRecord (const uint32_t ttl) const {
     static constexpr bool isProbing = true;
 
     // 1. ANY record for Hostname -> IP Address
-    _writeANYRecord(_udp, _fqhn, _addr);
+    _writeANYRecord (_udp, _fqhn, _addr);
     // 2. A record for Hostname -> IP Address
-    _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique, isProbing), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+    _writeARecord (_udp, _fqhn, _addr, _configureCacheFlush (DNSRecordUniqueness::Unique, isProbing), _configureTTL (DNSRecordUniqueness::Unique, _ttls, ttl));
 
-    if (!_services.empty()) {
+    if (! _services.empty ()) {
         // 3-N service records
-        for (const auto& service : _services) {
+        for (const auto &service : _services) {
             // 1. SRV record for Service -> Hostname
-            _writeSRVRecord(_udp, service._fqsn, _fqhn, service.port, service.config, _configureCacheFlush(DNSRecordUniqueness::Unique, isProbing), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+            _writeSRVRecord (_udp, service._fqsn, _fqhn, service.port, service.config, _configureCacheFlush (DNSRecordUniqueness::Unique, isProbing), _configureTTL (DNSRecordUniqueness::Unique, _ttls, ttl));
             // 2. TXT record for Service (no target)
-            _writeTXTRecord(_udp, service._fqsn, service.text, _configureCacheFlush(DNSRecordUniqueness::Contextual, isProbing), _configureTTL(DNSRecordUniqueness::Contextual, _ttls, ttl));
+            _writeTXTRecord (_udp, service._fqsn, service.text, _configureCacheFlush (DNSRecordUniqueness::Contextual, isProbing), _configureTTL (DNSRecordUniqueness::Contextual, _ttls, ttl));
             // 3. PTR record for Service Type -> Service
-            _writePTRRecord(_udp, service._serv, service._fqsn, _configureCacheFlush(DNSRecordUniqueness::Shared, isProbing), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+            _writePTRRecord (_udp, service._serv, service._fqsn, _configureCacheFlush (DNSRecordUniqueness::Shared, isProbing), _configureTTL (DNSRecordUniqueness::Shared, _ttls, ttl));
         }
 
         // N-O PTR records for DNS-SD => Service Type
-        for (const auto& serviceType : _serviceTypes)
-            _writePTRRecord(_udp, SERVICE_SD__fqsn, serviceType, _configureCacheFlush(DNSRecordUniqueness::Shared, isProbing), _configureTTL(DNSRecordUniqueness::Shared, _ttls, ttl));
+        for (const auto &serviceType : _serviceTypes)
+            _writePTRRecord (_udp, SERVICE_SD__fqsn, serviceType, _configureCacheFlush (DNSRecordUniqueness::Shared, isProbing), _configureTTL (DNSRecordUniqueness::Shared, _ttls, ttl));
     }
 }
 
 // -----------------------------------------------------------------------------------------------
 
-void MDNS::_writeNextSecureRecord(const String& name, const std::initializer_list<uint8_t>& types, const uint32_t ttl, const bool includeAdditional) const {
-    DNSBitmap bitmap(types);
+void MDNS::_writeNextSecureRecord (const String &name, const std::initializer_list<uint8_t> &types, const uint32_t ttl, const bool includeAdditional) const {
+    DNSBitmap bitmap (types);
     // 1. NSEC record with Service bitmap
-    _writeNSECRecord(_udp, name, bitmap, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+    _writeNSECRecord (_udp, name, bitmap, _configureCacheFlush (DNSRecordUniqueness::Unique), _configureTTL (DNSRecordUniqueness::Unique, _ttls, ttl));
 
     if (includeAdditional) {
         // 2. A record for Hostname -> IP Address
-        _writeARecord(_udp, _fqhn, _addr, _configureCacheFlush(DNSRecordUniqueness::Unique), _configureTTL(DNSRecordUniqueness::Unique, _ttls, ttl));
+        _writeARecord (_udp, _fqhn, _addr, _configureCacheFlush (DNSRecordUniqueness::Unique), _configureTTL (DNSRecordUniqueness::Unique, _ttls, ttl));
     }
 }
 
